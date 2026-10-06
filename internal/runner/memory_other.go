@@ -6,4 +6,4 @@ package runner
 // guard watches nothing there.
 const canReadRSS = false
 
-func rss(pid int) (int64, bool) { return 0, false }
+func rss(pid int) int64 { return 0 }

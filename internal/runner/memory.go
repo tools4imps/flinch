@@ -28,7 +28,7 @@ func watchMemory(p *os.Process, limit int64) (stop func()) {
 			case <-done:
 				return
 			case <-tick.C:
-				if n, ok := rss(p.Pid); ok && n > limit {
+				if n := rss(p.Pid); n > limit {
 					p.Kill()
 					return
 				}

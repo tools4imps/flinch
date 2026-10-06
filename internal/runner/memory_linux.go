@@ -10,20 +10,15 @@ import (
 
 const canReadRSS = true
 
-// rss reads a process's resident memory from /proc, in bytes. The second field of statm is the
-// resident set in pages.
-func rss(pid int) (int64, bool) {
+// rss reads a process's resident memory from /proc, in bytes, or 0 when it can't. statm's first
+// field is the program's size and its second the resident set, both in pages.
+func rss(pid int) int64 {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/statm")
 	if err != nil {
-		return 0, false
+		return 0
 	}
-	fields := strings.Fields(string(data))
-	if len(fields) < 2 {
-		return 0, false
-	}
-	pages, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return pages * int64(os.Getpagesize()), true
+	_, rest, _ := strings.Cut(string(data), " ")
+	resident, _, _ := strings.Cut(rest, " ")
+	pages, _ := strconv.ParseInt(resident, 10, 64)
+	return pages * int64(os.Getpagesize())
 }
