@@ -76,6 +76,7 @@ func Parse(line string) (Pattern, error) {
 	if arrow < 0 {
 		return Pattern{}, errors.New(`a mutant id needs " -> " between the original and the replacement`)
 	}
+	// rest starts with something other than a space, so the original is never empty.
 	id := ID{Dir: dir, Unit: unit, Original: Collapse(rest[:arrow]), N: 1}
 	repl := rest[arrow+4:]
 	if m := trailingN.FindStringSubmatch(repl); m != nil {
@@ -87,9 +88,6 @@ func Parse(line string) (Pattern, error) {
 		repl = repl[:len(repl)-len(m[0])]
 	}
 	id.Replacement = Collapse(repl)
-	if id.Original == "" {
-		return Pattern{}, errors.New("a mutant id needs the original source before \" -> \"")
-	}
 	return Pattern{Dir: dir, Unit: unit, ID: id}, nil
 }
 
@@ -102,7 +100,8 @@ func splitUnit(s string) (dir, unit string, err error) {
 	} else {
 		slash := strings.LastIndex(s, "/")
 		dot := strings.Index(s[slash+1:], ".")
-		if dot < 0 {
+		// A directory never ends in a slash, so a dot right after one starts no unit.
+		if dot <= 0 {
 			return "", "", errors.New(`a mutant id names its unit after the package directory, as in "internal/skip.Match"`)
 		}
 		dir, unit = s[:slash+1+dot], s[slash+1+dot+1:]
