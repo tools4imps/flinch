@@ -582,7 +582,7 @@ func TestTimeoutCountsOnlyWhenARerunTimesOutToo(t *testing.T) {
 	}
 	var budgets []time.Duration
 	for _, e := range r.log {
-		if e.event == "TestSlow" && e.budgeted() && slices.Equal(e.run, []string{"TestSlow"}) && len(budgets) < 2 {
+		if e.event == "TestSlow" && e.budgeted() && slices.Equal(e.run, []string{"TestSlow"}) && len(budgets) < 3 {
 			d, err := time.ParseDuration(e.timeout)
 			if err != nil {
 				t.Fatal(err)
