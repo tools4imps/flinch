@@ -33,29 +33,3 @@ internal/engine.Run: time.Since(started) - timing["plan"] - timing["prove"] -> t
 ```unpromised
 internal/engine.goEnv: i < len(lines) -> i <= len(lines)
 ```
-
-## No mutant starts at a case keyword or a colon
-
-A case header's range runs from its case or default keyword to its colon. Every operator replaces an expression, a call statement or a function body, so no mutant starts on the keyword or on the colon, and moving either end of the range by one byte matches the same mutants.
-
-```equivalent
-internal/engine.Prepare: h.from <= m.Start -> h.from < m.Start
-internal/engine.Prepare: m.Start < h.to -> m.Start <= h.to
-```
-
-## ast.Inspect ignores the result of its closing call
-
-ast.Inspect calls the function with nil after a node's children and drops what it returns, so the closing call may return true or false.
-
-```equivalent
-internal/engine.caseHeads.func1: true -> false
-```
-
-## Only a case clause has a colon, and it always sits deep
-
-A node with no colon gives a header range that ends at offset 0, which no mutant starts before, so recording one changes nothing. A case clause always has the file, a declaration, a body, its switch or select and that statement's block above it, so the stack never holds exactly two nodes when one is found.
-
-```equivalent
-internal/engine.caseHeads.func1: colon.IsValid() && len(stack) >= 2 -> colon.IsValid() || len(stack) >= 2
-internal/engine.caseHeads.func1: len(stack) >= 2 -> len(stack) > 2
-```

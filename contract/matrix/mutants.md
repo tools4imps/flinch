@@ -82,14 +82,3 @@ The grammar around the names of the tests that kill it is open.
 internal/matrix.plural: { ... } -> { return *new(string) }
 internal/matrix.plural: n == 1 -> n != 1
 ```
-
-## The capacity Apply reserves
-
-Apply sizes its buffer to fit the mutated file. A bigger buffer, or a smaller one that append
-grows, holds the same bytes, and only the spare capacity of the slice it returns differs. The
-Contract promises the bytes.
-
-```unpromised
-internal/model.Mutant.Apply: len(src)-(m.End-m.Start) -> len(src)+(m.End-m.Start)
-internal/model.Mutant.Apply: len(src)-(m.End-m.Start)+len(m.Text) -> len(src)-(m.End-m.Start)-len(m.Text)
-```

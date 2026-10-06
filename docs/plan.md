@@ -1,8 +1,7 @@
 # flinch v0.1.0 build plan
 
-The design is in `docs/design.md` (the Design tab) and `docs/design-contract.md` (the full Contract as
-first drafted). Where this plan and the design disagree, this plan is right: it records the v0.1.0
-scope decided after the design was written.
+This is the plan v0.1.0 was built from. The obligations below were the starting point; the Contract
+in `contract/*/README.md` is what flinch is held to now, and it grew as the suites were written.
 
 ## v0.1.0 scope
 

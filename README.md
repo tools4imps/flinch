@@ -188,7 +188,7 @@ On an existing codebase, `--since` holds new code from the first day while a ful
 
 ## Not in this release
 
-The design in [`docs/design.md`](docs/design.md) goes further than v0.1.0. Still to come: a result cache, unit tests as witnesses for missing obligations (`--witness`), `flinch explain`, the opt-in operators, redundant-test reporting, and coverage for binaries that tests build themselves.
+The design goes further than v0.1.0, as [`docs/plan.md`](docs/plan.md) records. Still to come: a result cache, unit tests as witnesses for missing obligations (`--witness`), `flinch explain`, the opt-in operators, redundant-test reporting, and coverage for binaries that tests build themselves.
 
 ## How flinch is held to account
 

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/token"
 	"io"
 	"os"
 	"os/exec"
@@ -48,10 +46,6 @@ type Plan struct {
 	Units    map[string]bool // "dir.Top" units the plan mutates whole
 	// spans holds each function's body, so an erase mutant is reached by any test that ran any of it.
 	spans map[string]span
-	// heads moves a mutant in a case or select clause's header to the switch or select holding it.
-	// Go's cover tool leaves the text between "case" and its colon out of every block, so the tests
-	// that reached the statement are the ones that ran the header. Keyed by mutant hash.
-	heads map[string][2]int
 }
 
 type span struct {
@@ -70,7 +64,7 @@ func Prepare(ctx context.Context, o RunOptions) (*Plan, error) {
 	}
 	p := &Plan{
 		Static: st, Whole: map[string]bool{}, Units: map[string]bool{},
-		spans: map[string]span{}, heads: map[string][2]int{},
+		spans: map[string]span{},
 	}
 	if len(st.Problems) > 0 {
 		return p, nil
@@ -127,18 +121,6 @@ func Prepare(ctx context.Context, o RunOptions) (*Plan, error) {
 		ms, unviable := mutate.Generate(loader, tp, mutable, owner, ops)
 		all = append(all, ms...)
 		p.Unviable += unviable
-		heads := map[string][]caseHead{}
-		for i, f := range tp.Files {
-			heads[tp.Names[i]] = caseHeads(tp.Fset, f)
-		}
-		for _, m := range ms {
-			for _, h := range heads[m.File] {
-				if h.from <= m.Start && m.Start < h.to {
-					p.heads[m.Hash] = [2]int{h.line, h.col}
-					break
-				}
-			}
-		}
 		for _, u := range units.Of(tp.Files, tp.Names) {
 			if u.Body == nil || u.Kind == units.Closure {
 				continue
@@ -290,11 +272,7 @@ func Run(ctx context.Context, o RunOptions) (*report.Report, error) {
 				refs = base.ReachSpan(s.file, s.fromLine, s.fromCol, s.toLine, s.toCol)
 			}
 		default:
-			line, col := m.Line, m.Col
-			if h, ok := plan.heads[m.Hash]; ok {
-				line, col = h[0], h[1]
-			}
-			refs = base.Reach(m.File, line, col)
+			refs = base.Reach(m.File, m.Line, m.Col)
 		}
 		if len(refs) > 0 {
 			reached[m.Hash] = refs
@@ -364,43 +342,6 @@ func Run(ctx context.Context, o RunOptions) (*report.Report, error) {
 	rep.Exit = gate.Decide(st.Problems, res, "", plan.Full).Exit
 	timing["total"] = time.Since(started)
 	return rep, nil
-}
-
-// A caseHead is the byte range from a case keyword to its colon, and where the statement holding the
-// clause starts.
-type caseHead struct {
-	from, to  int
-	line, col int
-}
-
-// caseHeads lists the clause headers of every switch and select in a file, each with where its
-// statement starts.
-func caseHeads(fset *token.FileSet, f *ast.File) []caseHead {
-	var heads []caseHead
-	var stack []ast.Node
-	ast.Inspect(f, func(n ast.Node) bool {
-		if n == nil {
-			stack = stack[:len(stack)-1]
-			return true
-		}
-		var colon token.Pos
-		switch c := n.(type) {
-		case *ast.CaseClause:
-			colon = c.Colon
-		case *ast.CommClause:
-			colon = c.Colon
-		}
-		if colon.IsValid() && len(stack) >= 2 {
-			holder := fset.Position(stack[len(stack)-2].Pos())
-			heads = append(heads, caseHead{
-				from: fset.Position(n.Pos()).Offset, to: fset.Position(colon).Offset,
-				line: holder.Line, col: holder.Column,
-			})
-		}
-		stack = append(stack, n)
-		return true
-	})
-	return heads
 }
 
 func asUndecided(err error) string {
