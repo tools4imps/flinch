@@ -131,8 +131,11 @@ func TestBumpB(t *testing.T) {
 	}
 }
 
+// TestHold1 and TestHold2 nap so their lone run times give the reruns after the guard's hang a budget
+// of seconds, which a busy machine can't eat up before a test this small finishes.
 func TestHold1(t *testing.T) {
 	calc.Note(t.Name())
+	time.Sleep(300 * time.Millisecond)
 	if got := calc.Hold(); got != 7 {
 		t.Errorf("Hold() = %d", got)
 	}
@@ -140,6 +143,7 @@ func TestHold1(t *testing.T) {
 
 func TestHold2(t *testing.T) {
 	calc.Note(t.Name())
+	time.Sleep(300 * time.Millisecond)
 	if got := calc.Hold(); got != 7 {
 		t.Errorf("Hold() = %d", got)
 	}
