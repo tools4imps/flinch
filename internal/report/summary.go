@@ -42,12 +42,12 @@ func count(m *matrix.Result) counts {
 			c.NoVerdict++
 		case model.Declared:
 			c.Declared++
-			switch {
-			case mu.Declaration != nil && mu.Declaration.Wildcard:
+			// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
+			if mu.Declaration != nil && mu.Declaration.Wildcard {
 				c.Wildcard++
-			case mu.Declaration != nil && mu.Declaration.Kind == "equivalent":
+			} else if mu.Declaration != nil && mu.Declaration.Kind == "equivalent" {
 				c.Equivalent++
-			default:
+			} else {
 				c.Unpromised++
 			}
 		}
@@ -56,12 +56,11 @@ func count(m *matrix.Result) counts {
 
 	c.Obligations = len(m.Obligations)
 	for _, o := range m.Obligations {
-		switch {
-		case len(o.Holds) > 0:
+		if len(o.Holds) > 0 {
 			c.Holding++
-		case o.Hollow:
+		} else if o.Hollow {
 			c.Hollow++
-		default:
+		} else {
 			c.Unjudged++
 		}
 		if o.CrashOnly {

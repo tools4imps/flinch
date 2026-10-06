@@ -126,17 +126,17 @@ func setStatus(ms []Mutant, in Input) {
 	for i := range ms {
 		m := &ms[i]
 		row, ok := in.Rows[m.Hash]
-		switch {
-		case !ok:
+		// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
+		if !ok {
 			// Settled below, once every erase mutant is known.
-		case row.Verdict != "":
+		} else if row.Verdict != "" {
 			m.Status, m.Verdict = model.NoVerdict, row.Verdict
-		case len(row.Kills) > 0:
+		} else if len(row.Kills) > 0 {
 			m.Status = model.Killed
-		case m.Erase:
+		} else if m.Erase {
 			m.Status = model.Erased
 			erased[m.Dir+"."+m.Top] = true
-		default:
+		} else {
 			m.Status = model.Lived
 		}
 	}
@@ -145,12 +145,11 @@ func setStatus(ms []Mutant, in Input) {
 		if _, ok := in.Rows[m.Hash]; ok {
 			continue
 		}
-		switch {
-		case !m.Erase && erased[m.Dir+"."+m.Top]:
+		if !m.Erase && erased[m.Dir+"."+m.Top] {
 			m.Status = model.Skipped
-		case len(in.Reached[m.Hash]) == 0:
+		} else if len(in.Reached[m.Hash]) == 0 {
 			m.Status = model.Unreached
-		default:
+		} else {
 			// Contract tests reach it, yet it has no row and no erased function explains why.
 			m.Status = model.NoVerdict
 			m.Verdict = "Contract tests reach this mutant, but it was never run"
@@ -214,10 +213,10 @@ func declare(ms []Mutant, in Input) []problem.Problem {
 			if m.Declaration == nil {
 				m.Declaration = copyOf(d)
 			}
-			switch {
-			case m.Status == model.Killed:
+			// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
+			if m.Status == model.Killed {
 				broken = append(broken, problem.Problem{Path: d.Path, Line: d.Line, Message: brokenMessage(m)})
-			case m.Status.Unheld():
+			} else if m.Status.Unheld() {
 				m.Status = model.Declared
 			}
 		}

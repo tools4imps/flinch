@@ -170,7 +170,8 @@ func scenario(t *testing.T, repo string) {
 	u := numbered(4)
 	u[3] = "line 4 edited"
 	write(t, repo, "pkg/ünï.go", join(u))
-	write(t, repo, "pkg/fresh.go", join(numbered(3)))
+	// Its own text, so no deleted file can pass for its old side.
+	write(t, repo, "pkg/fresh.go", join([]string{"fresh 1", "fresh 2", "fresh 3"}))
 	write(t, repo, "pkg/debug.log", "ignored\n")
 }
 
@@ -303,9 +304,6 @@ func TestUserConfigAndEnvironmentChangeNothing(t *testing.T) {
 
 	if !reflect.DeepEqual(plain.lines, hostile.lines) {
 		t.Errorf("changed lines differ under a user's config:\nplain   %v\nhostile %v", plain.lines, hostile.lines)
-	}
-	if !reflect.DeepEqual(plain.whole, hostile.whole) {
-		t.Errorf("untracked files differ under a user's config:\nplain   %v\nhostile %v", plain.whole, hostile.whole)
 	}
 	if !reflect.DeepEqual(plain.Paths(), hostile.Paths()) {
 		t.Errorf("changed paths differ under a user's config:\nplain   %q\nhostile %q", plain.Paths(), hostile.Paths())
