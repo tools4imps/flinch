@@ -56,6 +56,7 @@ type Job struct {
 // the coverage blocks each test reached, and the packages each suite's binary links.
 type Baseline struct {
 	o      Options
+	cache  string // the build cache for mutant builds
 	suites []*suite
 	byPrim map[string]*suite
 	lone   map[model.TestRef]time.Duration
@@ -97,6 +98,7 @@ func Prove(ctx context.Context, o Options, suites []Suite, coverpkg []string) (*
 		blocks:  map[string][]block{},
 		links:   map[string][]model.TestRef{},
 		batches: map[string]*batchCheck{},
+		cache:   mutantCache(o.Work),
 	}
 	for _, d := range []string{"clean", "cover", "m", "tmp"} {
 		if err := os.MkdirAll(filepath.Join(o.Work, d), 0o755); err != nil {
