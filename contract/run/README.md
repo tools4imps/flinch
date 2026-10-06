@@ -8,7 +8,7 @@ The runner proves the Contract suite green, maps what each Contract test reaches
 - **R2** The lone runs record each test's coverage blocks. A mutant's covering tests are the Contract tests whose lone run reached its block.
 - **R3** A mutant in a package-level variable's initializer or an `init` function is reached by every Contract test whose binary links its package.
 - **R4** A mutant no Contract test reaches is unreached and is never built.
-- **R5** Each distinct batch of covering tests runs once against the clean binary before any mutant uses it. A test that fails there stops the run with exit 2.
+- **R5** Each distinct batch of covering tests runs once against the clean binary before any mutant uses it, with ten times a mutant's time budget. A test that fails there stops the run with exit 2.
 - **R6** A reached mutant is compiled through `-overlay`. The working tree, the git index and every source file are unchanged after a run, including an interrupted one.
 - **R7** Each test binary runs in its package's directory, the way `go test` runs it.
 - **R8** A mutant runs its whole batch without stopping at the first failure. Its row records every test and subtest that failed, and whether each failed on an assertion, a panic or a timeout.

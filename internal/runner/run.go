@@ -200,9 +200,9 @@ func (b *Baseline) checkBatch(ctx context.Context, s *suite, tests []string) err
 	if c.done {
 		return c.err
 	}
-	// The check is about which tests share a process, not about time, so it gets the limit the
-	// clean whole-suite run gets. A mutant's budget would fail a slow machine's clean code.
-	p, err := b.runTests(ctx, s, s.clean, tests, defaultTimeout)
+	// The check is about which tests share a process, not about time, so it gets ten times a
+	// mutant's budget. A mutant's own budget would fail clean code on a loaded machine.
+	p, err := b.runTests(ctx, s, s.clean, tests, b.budget(s, tests, cleanBatchScale))
 	if err != nil {
 		// A run that ctx stopped proves nothing, so a later Run checks the batch again.
 		return b.undecidedRun(err)
@@ -393,6 +393,9 @@ func row(groups []*group, res map[model.TestRef]*outcome, verdict string) model.
 	})
 	return r
 }
+
+// cleanBatchScale stretches the budget for a batch's clean run.
+const cleanBatchScale = 10
 
 // budget is how long a set of tests may run against a mutant: the sum of their lone run times, times
 // the coefficient, plus a base, all times scale.

@@ -546,19 +546,29 @@ func TestBudgetIsLoneTimesTimesTenPlusTwoSeconds(t *testing.T) {
 	for i := range batch {
 		batch[i] = strings.TrimPrefix(batch[i], "a/")
 	}
-	seen := map[string]bool{}
+	// The batch's clean run gets ten times the budget (R5); every mutant's run gets the budget itself.
+	var budgets []time.Duration
 	for _, e := range r.log {
 		if !slices.Contains(batch, e.event) || !e.budgeted() || !slices.Equal(e.run, batch) {
 			continue
 		}
-		seen[e.timeout] = true
 		d, err := time.ParseDuration(e.timeout)
-		if err != nil || d < 6*time.Second || d > 20*time.Second {
-			t.Errorf("%s ran with budget %s, want 10 x (its batch's lone run times) + 2s", e.event, e.timeout)
+		if err != nil {
+			t.Fatal(err)
 		}
+		budgets = append(budgets, d)
 	}
-	if len(seen) != 1 {
-		t.Errorf("the batch ran with budgets %v, want one budget every time", seen)
+	if len(budgets) == 0 {
+		t.Fatal("the batch never ran with a budget")
+	}
+	budget := slices.Min(budgets)
+	if budget < 6*time.Second || budget > 20*time.Second {
+		t.Errorf("the batch ran with budget %s, want 10 x (its batch's lone run times) + 2s", budget)
+	}
+	for _, d := range budgets {
+		if d != budget && (d-10*budget).Abs() > 20*time.Millisecond {
+			t.Errorf("the batch ran with budget %s, want %s, or ten times it for its clean run", d, budget)
+		}
 	}
 }
 
@@ -580,9 +590,9 @@ func TestTimeoutCountsOnlyWhenARerunTimesOutToo(t *testing.T) {
 			budgets = append(budgets, d)
 		}
 	}
-	// The batch's clean run, the mutant's run and its rerun.
-	if len(budgets) != 3 || budgets[0] != budgets[1] || (budgets[2]-2*budgets[1]).Abs() > 2*time.Millisecond {
-		t.Errorf("TestSlow's budgets = %v, want the rerun's twice the first", budgets)
+	// The batch's clean run, at ten times a mutant's budget, then the mutant's run and its rerun.
+	if len(budgets) != 3 || (budgets[0]-10*budgets[1]).Abs() > 20*time.Millisecond || (budgets[2]-2*budgets[1]).Abs() > 2*time.Millisecond {
+		t.Errorf("TestSlow's budgets = %v, want the clean run's ten times the mutant's and the rerun's twice it", budgets)
 	}
 	// TestSum loops forever against its mutant, and its rerun, alone, times out too.
 	if got := kills(r.rows["serial timeout"]); !slices.Equal(got, []string{"a/TestSum timeout"}) {
