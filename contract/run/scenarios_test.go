@@ -40,12 +40,12 @@ const (
 // of every job below, a second Run that reuses a batch, an interrupted Run and a Run whose context had
 // already ended.
 type mainRun struct {
-	root          string
-	work          string // the runner's work directory
-	base          *runner.Baseline
-	second        time.Duration // how long the second Run took
+	root   string
+	work   string // the runner's work directory
+	base   *runner.Baseline
+	second time.Duration // how long the second Run took
 	// How many goroutines the process had before Prove and after the last Run.
-	goroutines [2]int
+	goroutines    [2]int
 	jobs          map[string]runner.Job
 	rows          map[string]model.Row // by job name
 	again         map[string]model.Row // the second Run, by job name
