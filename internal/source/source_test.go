@@ -56,20 +56,17 @@ func TestPackagesNamesFilesFromTheModuleRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	root, inner, only := pkgs[0], pkgs[1], pkgs[2]
-	if root.ImportPath != "example.com/mod" || root.Name != "mod" {
-		t.Errorf("root = %q %q", root.ImportPath, root.Name)
+	if root.ImportPath != "example.com/mod" {
+		t.Errorf("root = %q", root.ImportPath)
 	}
-	if inner.ImportPath != "example.com/mod/internal/inner" || inner.Name != "inner" {
-		t.Errorf("inner = %q %q", inner.ImportPath, inner.Name)
+	if inner.ImportPath != "example.com/mod/internal/inner" {
+		t.Errorf("inner = %q", inner.ImportPath)
 	}
 	if !reflect.DeepEqual(inner.GoFiles, []string{"internal/inner/inner.go"}) {
 		t.Errorf("inner.GoFiles = %q", inner.GoFiles)
 	}
 	if len(only.GoFiles) != 0 || !reflect.DeepEqual(only.TestFiles, []string{"onlytests/x_test.go"}) {
 		t.Errorf("onlytests = %q %q", only.GoFiles, only.TestFiles)
-	}
-	if only.Name != "onlytests" {
-		t.Errorf("onlytests.Name = %q", only.Name)
 	}
 }
 

@@ -1,5 +1,7 @@
 # flinch
 
+<p align="center"><img src="assets/huff-flinch.svg" alt="Huff, the Impatient Programming imp, grinning as he swaps a plus block for a minus block in a row of toy blocks while his robot jumps back on its leash, flinching" width="320"></p>
+
 flinch fails a pull request when code the Contract covers can break and no Contract test notices. It is the mutation gate for [Impatient Programming](https://impatientprogramming.org), and the sibling of [exhale](https://github.com/tools4imps/exhale-ruby) and [qualm](https://github.com/tools4imps/qualm).
 
 A Contract, in Impatient Programming, is what a component promises: numbered obligations in `contract/<primitive>/README.md`, and a black-box test suite beside them that proves each one. Pact's consumer-driven contracts between services are a separate idea. flinch breaks the code each primitive covers, one small change at a time, runs the Contract suite against every broken copy, and records which obligation's tests noticed. A test that doesn't flinch when the code breaks proves nothing.

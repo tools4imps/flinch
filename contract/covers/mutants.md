@@ -76,16 +76,6 @@ internal/source.Parse: sort.Strings(out.Types) -> (removed)
 internal/source.Dirs: sort.Strings(dirs) -> (removed)
 ```
 
-## A package's name is open
-
-Package.Name records the package clause. No part of flinch reads it, and the Contract promises nothing about it.
-
-```unpromised
-internal/source.readPackage: testName == "" -> testName != ""
-internal/source.readPackage: p.Name == "" -> p.Name != ""
-internal/source.readPackage: p.Name == "" -> p.Name != "" #2
-```
-
 ## A missing working directory is open
 
 FindModule fails on filepath.Abs only when the working directory can't be found, which even a deleted one doesn't cause on macOS. Without that error the next step fails to read a module with no root, so flinch still exits 2, with another message.

@@ -15,4 +15,6 @@ declare checks the mutants each primitive's mutants.md declares, and finds the d
 
 ```covers
 internal/declare
+internal/contract.reasons
+internal/contract.reason
 ```

@@ -82,10 +82,10 @@ type Config struct {
 // A Package is one directory of Go files. Every file name in it is slash-separated and relative to
 // the module root, the same form Parsed.Names and mutants use.
 type Package struct {
-	Dir, ImportPath, Name string
-	GoFiles               []string // non-test files that build under the config, sorted
-	TestFiles             []string // _test.go files that build under the config, sorted
-	Mutable               []string // GoFiles minus generated files and files that import "C"
+	Dir, ImportPath string
+	GoFiles         []string // non-test files that build under the config, sorted
+	TestFiles       []string // _test.go files that build under the config, sorted
+	Mutable         []string // GoFiles minus generated files and files that import "C"
 }
 
 // Dirs lists the module's directories that can hold its packages, slash-separated and relative to
@@ -169,7 +169,6 @@ func readPackage(m Module, ctx *build.Context, dir string) (Package, error) {
 	if err != nil {
 		return p, err
 	}
-	var testName string
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasSuffix(name, ".go") || !regular(filepath.Join(abs, name), e) {
@@ -189,9 +188,6 @@ func readPackage(m Module, ctx *build.Context, dir string) (Package, error) {
 		rel := Join(dir, name)
 		if strings.HasSuffix(name, "_test.go") {
 			p.TestFiles = append(p.TestFiles, rel)
-			if testName == "" {
-				testName = strings.TrimSuffix(head.Name.Name, "_test")
-			}
 			continue
 		}
 		cgo := importsC(head)
@@ -199,16 +195,10 @@ func readPackage(m Module, ctx *build.Context, dir string) (Package, error) {
 		if cgo && !ctx.CgoEnabled {
 			continue
 		}
-		if p.Name == "" {
-			p.Name = head.Name.Name
-		}
 		p.GoFiles = append(p.GoFiles, rel)
 		if !cgo && !ast.IsGenerated(head) {
 			p.Mutable = append(p.Mutable, rel)
 		}
-	}
-	if p.Name == "" {
-		p.Name = testName
 	}
 	sort.Strings(p.GoFiles)
 	sort.Strings(p.TestFiles)

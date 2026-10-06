@@ -153,6 +153,20 @@ func TestUnitsAreNamedTheWayTheCompilerNamesThem(t *testing.T) {
 	}
 }
 
+// Contract: identity/I2
+func TestCgoFilesInitFunctionsAreNumberedLast(t *testing.T) {
+	// The compiler numbers the init functions in plain files first, in name order, and those in cgo
+	// files after them. a.go and c.go are plain and b.go imports "C", so c.go holds init.1.
+	t.Setenv("CGO_ENABLED", "1")
+	found := map[string]string{}
+	for _, m := range dryRun(t, fixture("cgomod")) {
+		found[unit(m.ID, "internal/c")] = filepath.Base(m.File)
+	}
+	if found["init.0"] != "a.go" || found["init.1"] != "c.go" {
+		t.Errorf("init.0 is in %q and init.1 in %q, want a.go and c.go", found["init.0"], found["init.1"])
+	}
+}
+
 // Contract: identity/I3
 func TestOriginalAndReplacementCollapseWhitespace(t *testing.T) {
 	got := ids(dryRun(t, fixture("idmod")))

@@ -41,13 +41,15 @@ type Unit struct {
 	Body *ast.BlockStmt
 }
 
-// Of names every unit in a package. The files must be in the order the compiler sees them, which is
-// sorted by file name, because init functions are numbered across files in that order.
+// Of names every unit in a package. The files must be sorted by name. The compiler numbers init
+// functions across the plain files in that order and then across the cgo files, because the go
+// command hands it the files cgo generates after the rest, so Of numbers them the same way.
 func Of(files []*ast.File, names []string) []Unit {
 	var us []Unit
-	inits := 0
+	first := initStarts(files)
 	for i, f := range files {
 		name := names[i]
+		inits := first[i]
 		for _, decl := range f.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
@@ -94,6 +96,36 @@ func Of(files []*ast.File, names []string) []Unit {
 		}
 	}
 	return us
+}
+
+// initStarts gives the number of each file's first init function: the plain files in order, then
+// the files that import "C".
+func initStarts(files []*ast.File) []int {
+	starts := make([]int, len(files))
+	n := 0
+	for _, cgo := range []bool{false, true} {
+		for i, f := range files {
+			if importsC(f) != cgo {
+				continue
+			}
+			starts[i] = n
+			for _, decl := range f.Decls {
+				if d, ok := decl.(*ast.FuncDecl); ok && d.Recv == nil && d.Name.Name == "init" {
+					n++
+				}
+			}
+		}
+	}
+	return starts
+}
+
+func importsC(f *ast.File) bool {
+	for _, imp := range f.Imports {
+		if imp.Path.Value == `"C"` {
+			return true
+		}
+	}
+	return false
 }
 
 // closures names the function literals under the nodes of one top-level unit, in source order,
