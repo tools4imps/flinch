@@ -33,3 +33,11 @@ internal/engine.Run: time.Since(started) - timing["plan"] - timing["prove"] -> t
 ```unpromised
 internal/engine.goEnv: i < len(lines) -> i <= len(lines)
 ```
+
+## How many workers run by default
+
+The number of workers changes how fast a run goes, never its verdict, which reads the findings alone. On a machine with 16 CPUs or more, half the CPUs and twice them both come to the cap of 8. How many workers flinch picks when `--jobs` isn't given is left open.
+
+```unpromised
+internal/cli.defaultJobs: runtime.NumCPU()/2 -> runtime.NumCPU()*2
+```
