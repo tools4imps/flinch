@@ -7,7 +7,12 @@ on:
   # The full mutation run takes too long for every push, so it runs once a week and on demand.
   schedule:
     - cron: "0 6 * * 1"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Primitives to mutate, separated by spaces; empty for all of them
+        required: false
+        default: ""
 
 jobs:
   test:
@@ -34,8 +39,9 @@ jobs:
       - name: Test suite
         run: go test -race -timeout 30m ./...
 
-  # flinch holds itself to its own Contract. The static check is quick and runs every time. Pull
-  # requests also mutate the lines they change, and the weekly run mutates everything.
+  # flinch holds itself to its own Contract. The static check is quick and runs every time, and
+  # pull requests also mutate the lines they change. The weekly run mutates everything, in the
+  # plan, mutate and verdict jobs below.
   self:
     name: flinch on flinch
     runs-on: ubuntu-latest
@@ -59,6 +65,92 @@ jobs:
         if: github.event_name == 'pull_request'
         run: ./flinch --since "origin/${{ github.base_ref }}"
 
-      - name: Mutate everything
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: ./flinch
+  # One runner would take longer than the six hours GitHub allows a job, so the full run is split
+  # into shards: a primitive each, and a big primitive split again by operator.
+  plan:
+    name: Plan the full run
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build
+        run: go build -o flinch ./cmd/flinch
+
+      - name: Plan
+        id: plan
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          plan=$(python3 scripts/plan-shards.py ./flinch $ONLY)
+          echo "$plan" | python3 -m json.tool
+          echo "plan=$plan" >> "$GITHUB_OUTPUT"
+
+  mutate:
+    name: Mutate ${{ matrix.shard.name }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.plan).shards }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build
+        run: go build -o "$RUNNER_TEMP/flinch" ./cmd/flinch
+
+      # A shard sees only its own mutants, so its verdict means little alone. The verdict job
+      # merges the reports, and this step fails only when flinch itself does.
+      - name: Mutate
+        env:
+          ONLY: ${{ matrix.shard.only }}
+          OPERATORS: ${{ matrix.shard.operators }}
+        run: |
+          args=(--only "$ONLY" --format json --output "$RUNNER_TEMP/report.json")
+          if [ -n "$OPERATORS" ]; then args+=(--operators "$OPERATORS"); fi
+          code=0
+          "$RUNNER_TEMP/flinch" "${args[@]}" || code=$?
+          echo "flinch exited $code"
+          [ "$code" -le 2 ]
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard.name }}
+          path: ${{ runner.temp }}/report.json
+
+  verdict:
+    name: Full run verdict
+    needs: [plan, mutate]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          path: shards
+
+      - name: Merge the shards
+        env:
+          PLAN: ${{ needs.plan.outputs.plan }}
+        run: python3 scripts/merge-reports.py - shards "$RUNNER_TEMP/full.json"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-run
+          path: ${{ runner.temp }}/full.json
+          if-no-files-found: ignore
