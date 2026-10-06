@@ -90,9 +90,17 @@ func mutantCache(work string) string {
 	return filepath.Join(work, "gocache")
 }
 
-// buildMutant compiles a test binary through an overlay, in the mutant build cache.
+// buildMutant compiles a test binary through an overlay, in the mutant build cache. A build that
+// fails gets one more try after stray .go files are cleared from the suites' directories, because a
+// test another mutant made misbehave may have left one there.
 func (b *Baseline) buildMutant(ctx context.Context, dir, out, overlay string) error {
-	return b.buildEnv(ctx, []string{"GOCACHE=" + b.cache}, dir, out, "-overlay="+overlay)
+	env := []string{"GOCACHE=" + b.cache}
+	err := b.buildEnv(ctx, env, dir, out, "-overlay="+overlay)
+	if err != nil && ctx.Err() == nil {
+		b.sweepAllGo()
+		err = b.buildEnv(ctx, env, dir, out, "-overlay="+overlay)
+	}
+	return err
 }
 
 // withEnv is the environment for a process started in dir with the given variables added. It sets
@@ -204,12 +212,14 @@ func (b *Baseline) runTests(ctx context.Context, s *suite, bin string, tests []s
 	// A test can start a process that keeps the output pipe open after the test binary exits. Waiting
 	// on it would stall the run, so flinch stops reading shortly after the binary ends.
 	cmd.WaitDelay = 2 * time.Second
+	s.enter()
 	err := cmd.Start()
 	if err == nil {
 		stop := watchMemory(cmd.Process, b.o.MemoryLimit)
 		err = cmd.Wait()
 		stop()
 	}
+	s.leave()
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}

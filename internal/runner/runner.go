@@ -77,6 +77,10 @@ type suite struct {
 	abs   string // the package directory, absolute
 	clean string // the clean test binary
 	cover string // the coverage test binary, "" when nothing is covered
+
+	mu     sync.Mutex
+	active int             // test processes running in abs now
+	before map[string]bool // what abs held before any test ran, by path relative to abs
 }
 
 // Prove runs each suite whole and then each of its tests alone against the clean code. A test that
@@ -113,6 +117,9 @@ func Prove(ctx context.Context, o Options, suites []Suite, coverpkg []string) (*
 		sort.Strings(s.Tests)
 		st := &suite{Suite: s, n: i, abs: filepath.Join(root, filepath.FromSlash(s.Dir))}
 		st.clean = filepath.Join(o.Work, "clean", fmt.Sprintf("%d.test", i))
+		if st.before, err = listTree(st.abs); err != nil {
+			return nil, err
+		}
 		b.suites = append(b.suites, st)
 		b.byPrim[s.Primitive] = st
 	}

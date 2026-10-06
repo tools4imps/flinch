@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/tools4imps/flinch/internal/model"
 	"github.com/tools4imps/flinch/internal/runner"
 )
 
@@ -93,5 +94,35 @@ func TestARunWithNoOuterCacheBuildsMutantsInItsWorkDirectory(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(filepath.Dir(root), "work", "gocache"))
 	if err != nil || len(entries) == 0 {
 		t.Errorf("the mutant wasn't built in the work directory's cache: %v", err)
+	}
+}
+
+// Contract: run/R15
+func TestFilesATestLeavesInItsDirectoryAreGoneAndLaterMutantsStillBuild(t *testing.T) {
+	root, b := proveSlow(t, runner.Options{})
+	// The first mutant makes TestSlow write a .go file of another package and a text file into the
+	// directory it runs in, which is the suite's own, as a mutant writing by relative path would.
+	litter := `os.WriteFile("stray.go", []byte("package elsewhere\n"), 0o644); os.WriteFile("note.txt", nil, 0o644); return 2`
+	first, err := mutant(root, "calc/calc.go", "return 1", litter, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := mutant(root, "calc/calc.go", "return 1", "return 3", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []model.Mutant{first, second} {
+		rows, err := b.Run(context.Background(), []runner.Job{{Mutant: m, Tests: refs("a/TestSlow")}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row := rows[m.Hash]; row.Verdict != "" || !slices.Equal(kills(row), []string{"a/TestSlow assertion"}) {
+			t.Errorf("%s: row = %+v, want a/TestSlow killed and a verdict", m.Text, row)
+		}
+	}
+	for _, name := range []string{"stray.go", "note.txt"} {
+		if _, err := os.Stat(filepath.Join(root, "contract", "a", name)); err == nil {
+			t.Errorf("%s is still in the suite's directory after the run", name)
+		}
 	}
 }

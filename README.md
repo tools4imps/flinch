@@ -192,7 +192,7 @@ The design goes further than v0.1.0, as [`docs/plan.md`](docs/plan.md) records. 
 
 ## How flinch is held to account
 
-flinch has its own Contract in [`contract/`](contract): 91 obligations across eleven primitives, each proved by black-box Contract tests. CI runs `flinch contract` on every push and mutates what each pull request changes. A full mutation run happens once a week.
+flinch has its own Contract in [`contract/`](contract): 92 obligations across eleven primitives, each proved by black-box Contract tests. CI runs `flinch contract` on every push and mutates what each pull request changes. A full mutation run happens once a week.
 
 ## License
 

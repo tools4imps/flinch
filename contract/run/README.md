@@ -18,6 +18,7 @@ The runner proves the Contract suite green, maps what each Contract test reaches
 - **R12** A mutant that type-checked but won't build has no verdict, and any mutant without a verdict makes the run exit 2.
 - **R13** A test process that holds more than the memory limit is stopped, and counts as crashing: the lone test it ran is a killer, and a batch reruns one test per process.
 - **R14** Test processes run with TMPDIR, TMP and TEMP inside the run's work directory. Mutant builds use a build cache inside the run's work directory, or the outer run's when a Contract test starts flinch, so the user's Go build cache never holds a mutant.
+- **R15** A stray `.go` file a test process leaves directly in its suite's directory is removed as soon as the process ends, and everything else new there goes once no process of the suite is running, so a mutant that makes a test write files can't break later builds. A mutant whose build fails gets one more try after that cleanup.
 
 ```covers
 internal/runner
