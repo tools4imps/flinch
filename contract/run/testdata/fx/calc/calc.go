@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"syscall"
 	"time"
@@ -118,12 +119,17 @@ func Note(event string) {
 
 // freeze stops the process the first time it runs with a marker in a copy of the fixture, so Go's own
 // timeout can't fire and only the runner's guard ends the process. No test calls it; a mutant does.
+// When a stopped process's group is orphaned, Linux sends the group SIGHUP and then SIGCONT, so freeze
+// ignores the one and stops again after the other.
 func freeze(marker string) {
 	if _, err := os.Stat("../../../" + marker); err == nil {
 		return
 	}
 	os.WriteFile("../../../"+marker, nil, 0o644)
-	syscall.Kill(os.Getpid(), syscall.SIGSTOP)
+	signal.Ignore(syscall.SIGHUP)
+	for {
+		syscall.Kill(os.Getpid(), syscall.SIGSTOP)
+	}
 }
 
 // hoard holds ever more memory, 1 MB every 10ms, touching each page so it counts. No test calls it;
