@@ -336,8 +336,10 @@ func (g *gen) dropCall(x *ast.ExprStmt) {
 	}
 	start, end := g.off(x.Pos()), g.off(x.End())
 	stmt := string(g.src[start:end])
+	// The call's own parenthesis places it in a unit. The statement may start with a function literal
+	// called on the spot, and that literal's unit doesn't hold the call.
 	g.add(candidate{
-		at: x.Pos(), op: "drop-call", start: start, end: end,
+		at: call.Lparen, op: "drop-call", start: start, end: end,
 		text:     strings.Repeat("\n", strings.Count(stmt, "\n")),
 		fallback: "if false { " + stmt + " }",
 		original: g.collapsed(x.Pos(), x.End()),
@@ -451,11 +453,12 @@ func (g *gen) zeroLiteral(e ast.Expr, result types.Type) bool {
 }
 
 // swap replaces size bytes at pos with to. The id shows the whole expression or statement around
-// the change, before and after.
+// the change, before and after. The changed token places the mutant in a unit, because the whole
+// may start with a function literal called on the spot, whose unit doesn't hold the token.
 func (g *gen) swap(op string, whole ast.Node, pos token.Pos, size int, to string) {
 	start := g.off(pos)
 	g.add(candidate{
-		at: whole.Pos(), op: op, start: start, end: start + size, text: to,
+		at: pos, op: op, start: start, end: start + size, text: to,
 		original: g.collapsed(whole.Pos(), whole.End()),
 		replace:  mutantid.Collapse(g.slice(whole.Pos(), pos) + to + string(g.src[start+size:g.off(whole.End())])),
 	})
