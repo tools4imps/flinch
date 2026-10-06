@@ -144,15 +144,14 @@ func (s *scanner) primitiveFile(prim *contract.Primitive, pkg source.Package, fi
 				tagged = true
 				line := fset.Position(cm.Slash).Line
 				m := tagLine.FindStringSubmatch(cm.Text)
-				// An if chain rather than a switch: coverage counts the conditions of an else if,
-				// but not the expressions of a case, and flinch maps mutants to tests by coverage.
-				if m == nil {
+				switch {
+				case m == nil:
 					s.add(file, line, "a tag reads // Contract: <primitive>/<id>, as in // Contract: %s/%s", prim.Name, example(prim))
-				} else if m[1] != prim.Name {
+				case m[1] != prim.Name:
 					s.add(file, line, "%s names %s/%s, but a Contract test names only obligations of its own primitive, %s", t.Name, m[1], m[2], prim.Name)
-				} else if !known[m[2]] {
+				case !known[m[2]]:
 					s.add(file, line, "%s/%s isn't an obligation in %s", m[1], m[2], prim.Readme)
-				} else {
+				default:
 					full := m[1] + "/" + m[2]
 					if !slices.Contains(t.Obligations, full) {
 						t.Obligations = append(t.Obligations, full)

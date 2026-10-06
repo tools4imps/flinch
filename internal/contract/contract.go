@@ -246,6 +246,7 @@ func (l *loader) primitive(p *Primitive) error {
 func (l *loader) markdown(p *Primitive, name, text string) {
 	file := p.Dir + "/" + name
 	blocks, live := scan(text)
+	why := reasons(blocks, live)
 	if name == "README.md" {
 		seen := map[string]int{}
 		for _, ll := range live {
@@ -278,7 +279,7 @@ func (l *loader) markdown(p *Primitive, name, text string) {
 			}
 			for _, bl := range b.body {
 				p.Declarations = append(p.Declarations, Declaration{
-					Kind: b.info, Text: bl.text, Path: file, Line: bl.line, Reason: b.reason, Block: b.line,
+					Kind: b.info, Text: bl.text, Path: file, Line: bl.line, Reason: why[b.line], Block: b.line,
 				})
 			}
 		}

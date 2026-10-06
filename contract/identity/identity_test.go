@@ -1,7 +1,9 @@
 package identity_test
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -12,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/tools4imps/flinch/internal/mutantid"
+	"github.com/tools4imps/flinch/internal/mutate"
+	"github.com/tools4imps/flinch/internal/typecheck"
 )
 
 // Contract: identity/I1
@@ -141,6 +145,8 @@ func TestUnitsAreNamedTheWayTheCompilerNamesThem(t *testing.T) {
 		"Spaced":      "a.go:55",
 		"init.1":      "b.go:3",
 		"init.2":      "b.go:5",
+		"Box.Add":     "b.go:8",
+		"Twice":       "b.go:14",
 	}
 	if !reflect.DeepEqual(where, want) {
 		t.Errorf("units =\n%v\nwant\n%v", where, want)
@@ -171,6 +177,48 @@ func TestOriginalAndReplacementCollapseWhitespace(t *testing.T) {
 	p, err := mutantid.Parse("  internal/x.F:   a  &&\tb   ->  a ||  b   #2 ")
 	if want := (mutantid.ID{Dir: "internal/x", Unit: "F", Original: "a && b", Replacement: "a || b", N: 2}); err != nil || p.ID != want {
 		t.Errorf("Parse with runs of whitespace = %+v, %v; want %+v", p.ID, err, want)
+	}
+}
+
+// Contract: identity/I3
+func TestErasedFunctionsAndRemovedCallsReadAsTheirOwnForm(t *testing.T) {
+	const ip = "example.com/idmod/internal/shapes"
+	l, pkgs, err := typecheck.Load(context.Background(), fixture("idmod"), nil, []string{ip})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := pkgs[ip]
+	if p == nil {
+		t.Fatalf("typecheck.Load found no %s", ip)
+	}
+	mutable := map[string]bool{}
+	for _, name := range p.Names {
+		mutable[name] = true
+	}
+	owner := func(string) (string, bool) { return "shapes", true }
+	ms, _ := mutate.Generate(l, p, mutable, owner, []string{"erase", "drop-call"})
+	var got []string
+	for _, m := range ms {
+		got = append(got, m.ID)
+	}
+	for _, want := range []string{
+		"internal/shapes.Both: { ... } -> { return *new(int) }",
+		"internal/shapes.Box.Grow: { ... } -> { return }",
+		"internal/shapes.Nest: { ... } -> { return *new(func() bool) }",
+		"internal/shapes.Twice: b.Grow() -> (removed)",
+		// The call spans two lines, and its id collapses them.
+		"internal/shapes.Twice: b.Add(1, 2) -> (removed)",
+	} {
+		if !slices.Contains(got, want) {
+			t.Errorf("no mutant %q among\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+	erase := regexp.MustCompile(`^internal/shapes\.[A-Za-z0-9_.]+: \{ \.\.\. \} -> \{ return( \S.*)? \}$`)
+	removed := regexp.MustCompile(`^internal/shapes\.[A-Za-z0-9_.]+: \S.* -> \(removed\)$`)
+	for _, m := range ms {
+		if m.Erase && !erase.MatchString(m.ID) || !m.Erase && !removed.MatchString(m.ID) {
+			t.Errorf("%q isn't an erase or a removed call in the form I3 gives", m.ID)
+		}
 	}
 }
 
@@ -212,6 +260,55 @@ func TestAnEditOutsideAUnitLeavesItsIDsAlone(t *testing.T) {
 	}
 	if !slices.Contains(ids(after), "internal/shapes.Again: x > 0 -> x >= 0") {
 		t.Errorf("the edit didn't add Again's mutants: %v", ids(after))
+	}
+}
+
+// Contract: identity/I4
+func TestAddingOrRemovingAnInitRenumbersTheOnesAfterIt(t *testing.T) {
+	inits := func(dir string) []string {
+		var out []string
+		for _, id := range ids(dryRun(t, dir)) {
+			if strings.HasPrefix(id, "internal/shapes.init.") && !strings.Contains(id, "{ ... }") {
+				out = append(out, id)
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	before := inits(fixture("idmod"))
+	want := []string{
+		"internal/shapes.init.0: registered + 1 -> registered - 1",
+		"internal/shapes.init.1: registered += 2 -> registered -= 2",
+		"internal/shapes.init.2: registered += 3 -> registered -= 3",
+	}
+	if !reflect.DeepEqual(before, want) {
+		t.Fatalf("init mutants = %q, want %q", before, want)
+	}
+
+	// 0.go sorts before a.go, so its init takes number 0 and the others move up one.
+	added := copyTree(t, fixture("idmod"))
+	if err := os.WriteFile(filepath.Join(added, "internal", "shapes", "0.go"), []byte("package shapes\n\nfunc init() { registered -= 4 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want = []string{
+		"internal/shapes.init.0: registered -= 4 -> registered += 4",
+		"internal/shapes.init.1: registered + 1 -> registered - 1",
+		"internal/shapes.init.2: registered += 2 -> registered -= 2",
+		"internal/shapes.init.3: registered += 3 -> registered -= 3",
+	}
+	if got := inits(added); !reflect.DeepEqual(got, want) {
+		t.Errorf("after adding an init, init mutants = %q, want %q", got, want)
+	}
+
+	// Without a.go's init, b.go's move down one.
+	removed := copyTree(t, fixture("idmod"))
+	edit(t, filepath.Join(removed, "internal", "shapes", "a.go"), "func init() { registered = registered + 1 }\n", "")
+	want = []string{
+		"internal/shapes.init.0: registered += 2 -> registered -= 2",
+		"internal/shapes.init.1: registered += 3 -> registered -= 3",
+	}
+	if got := inits(removed); !reflect.DeepEqual(got, want) {
+		t.Errorf("after removing an init, init mutants = %q, want %q", got, want)
 	}
 }
 

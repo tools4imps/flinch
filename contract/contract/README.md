@@ -9,7 +9,7 @@ The loader reads the Contract's files and reports every problem in them.
 - **C3** Fences follow CommonMark: three or more backticks or tildes, closed by the same character at least as many times. A fence inside an HTML comment is dead. The info string is the first word after the fence.
 - **C4** `covers` blocks count only in README.md, and `equivalent` and `unpromised` blocks count only in mutants.md. One of those blocks anywhere else is an error that names the file it belongs in.
 - **C5** A symlink inside the Contract, a file that isn't UTF-8, and a Go file in a primitive's directory whose name doesn't end in `_test.go` are errors.
-- **C6** Every Contract error prints as `path:line: message`. A run reports all of them at once, sorted by path and line.
+- **C6** Every Contract error prints as `path:line: message`, or `path: message` when it concerns a whole file or directory. A run reports all of them at once, sorted by path and line.
 
 ```covers
 internal/contract

@@ -72,11 +72,3 @@ C3 says that fences follow CommonMark and that a fence inside an HTML comment is
 internal/contract.outsideComments: start+4+end -> start+4-end
 internal/contract.outsideComments: start+4+end+3 -> start+4+end-3
 ```
-
-## How an error about a whole file prints
-
-C6 gives every error a line, but an error about a whole file or directory, such as a symlink, has none. flinch prints it as `path: message`, and the Contract leaves open whether it prints a line of 0 instead.
-
-```unpromised
-internal/problem.Problem.String: p.Line > 0 -> p.Line >= 0
-```

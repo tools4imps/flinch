@@ -39,14 +39,3 @@ source lists a test file only after it has opened it, but the check for tags out
 ```unpromised
 internal/tags.scanner.parse: false -> true
 ```
-
-## Tags that tag nothing
-
-T6 makes a tag in a test file outside the Contract an error. No obligation says whether a `// Contract:` comment is also an error when it sits on no Contract test in a primitive's file, when it sits in a helper directory inside the Contract, when it sits in a Go file that isn't a test, or when it sits in a test file whose name starts with `_` or `.`, which the go command ignores.
-
-```unpromised
-internal/tags.scanner.primitiveFile: s.add(file, fset.Position(cm.Slash).Line, "this tag sits on no Contract test; put it in the comment group directly above a top-level Test, Example or Fuzz function") -> (removed)
-internal/tags.scanner.elsewhere: s.add(file, line, "this tag sits outside any primitive's directory, so it names nothing; Contract tests live directly in %s/<primitive>", s.c.Dir) -> (removed)
-internal/tags.scanner.elsewhere: !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), "_test.go") -> !e.Type().IsRegular() && !strings.HasSuffix(e.Name(), "_test.go")
-internal/tags.scanner.elsewhere: !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), "_test.go") || source.Skipped(e.Name()) -> !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), "_test.go") && source.Skipped(e.Name())
-```

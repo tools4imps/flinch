@@ -365,9 +365,19 @@ func TestErrorsPrintAsPathLineMessage(t *testing.T) {
 			printed = append(printed, strings.TrimSpace(line))
 		}
 	}
+	// The stray Go file is an error about the whole file, so it has no line to print.
 	var want []string
+	whole := 0
 	for _, e := range errs {
+		if e.Line == 0 {
+			want = append(want, fmt.Sprintf("%s: %s", e.Path, e.Message))
+			whole++
+			continue
+		}
 		want = append(want, fmt.Sprintf("%s:%d: %s", e.Path, e.Line, e.Message))
+	}
+	if whole != 1 {
+		t.Errorf("%d errors about a whole file, want 1 for contract/beta/stray.go: %v", whole, errs)
 	}
 	if !reflect.DeepEqual(printed, want) {
 		t.Errorf("printed\n%s\nwant\n%s", strings.Join(printed, "\n"), strings.Join(want, "\n"))
@@ -386,6 +396,7 @@ func TestARunReportsEveryErrorSortedByPathAndLine(t *testing.T) {
 		{"contract/alpha/alpha_test.go", 8},
 		{"contract/alpha/alpha_test.go", 10},
 		{"contract/beta/README.md", 4},
+		{"contract/beta/stray.go", 0},
 	}
 	if got := places(jsonErrors(t, out)); !reflect.DeepEqual(got, want) {
 		t.Errorf("errors at\n%v\nwant\n%v", got, want)

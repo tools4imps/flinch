@@ -59,7 +59,7 @@ func TestScanSkipsBlankAndCommentLinesInsideBlocks(t *testing.T) {
 	}
 }
 
-func TestScanGivesEachBlockItsHeadingAndProse(t *testing.T) {
+func TestReasonsGiveEachBlockItsHeadingAndProse(t *testing.T) {
 	text := md(`'''unpromised
 x
 '''
@@ -90,10 +90,11 @@ x
 x
 '''
 `)
-	bs, _ := scan(text)
+	bs, live := scan(text)
+	why := reasons(bs, live)
 	var got []string
 	for _, b := range bs {
-		got = append(got, b.reason)
+		got = append(got, why[b.line])
 	}
 	want := []string{
 		"",

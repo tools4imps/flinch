@@ -7,10 +7,9 @@ import (
 
 // A block is one fenced block in a Markdown file.
 type block struct {
-	info   string // the first word after the opening fence
-	line   int    // the line of the opening fence
-	body   []bodyLine
-	reason string // the heading's text plus the prose between it and the block; "" with no heading
+	info string // the first word after the opening fence
+	line int    // the line of the opening fence
+	body []bodyLine
 }
 
 type bodyLine struct {
@@ -19,7 +18,7 @@ type bodyLine struct {
 }
 
 // A liveLine is a line outside any fence and any HTML comment, kept so the caller can look for
-// obligations without a second pass that would have to repeat the fence rules.
+// obligations and headings without a second pass that would have to repeat the fence rules.
 type liveLine struct {
 	text string
 	line int
@@ -34,18 +33,14 @@ var (
 )
 
 // scan reads the little Markdown the Contract needs, with no Markdown library: fenced blocks under
-// CommonMark's fence rules, the nearest heading above each one, and the prose between that heading
-// and the block. A fence inside an HTML comment is dead, so commenting out a block retires it.
+// CommonMark's fence rules, and the lines outside them. A fence inside an HTML comment is dead, so
+// commenting out a block retires it.
 func scan(text string) (blocks []block, live []liveLine) {
 	var (
-		heading    string
-		hasHeading bool
-		prose      []string
-		afterProse bool
-		inComment  bool
-		open       *block
-		openChar   byte
-		openLen    int
+		inComment bool
+		open      *block
+		openChar  byte
+		openLen   int
 	)
 	lines := strings.Split(text, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
@@ -54,15 +49,11 @@ func scan(text string) (blocks []block, live []liveLine) {
 	for i, raw := range lines {
 		no := i + 1
 		line := strings.TrimSuffix(raw, "\r")
-		wasProse := afterProse
-		afterProse = false
 
 		if open != nil {
 			if m := fenceClose.FindStringSubmatch(line); m != nil && m[1][0] == openChar && len(m[1]) >= openLen {
 				blocks = append(blocks, *open)
 				open = nil
-				// Prose read before a block explains that block, not the next one.
-				prose = nil
 				continue
 			}
 			if t := strings.TrimSpace(line); t != "" && !strings.HasPrefix(t, "#") {
@@ -83,23 +74,8 @@ func scan(text string) (blocks []block, live []liveLine) {
 			if f := strings.Fields(m[2]); len(f) > 0 {
 				info = f[0]
 			}
-			open = &block{info: info, line: no, reason: reason(hasHeading, heading, prose)}
+			open = &block{info: info, line: no}
 			openChar, openLen = m[1][0], len(m[1])
-			continue
-		}
-		if wasProse && setext.MatchString(line) {
-			heading, hasHeading = prose[len(prose)-1], true
-			prose = nil
-			continue
-		}
-		if m := atx.FindStringSubmatch(line); m != nil {
-			heading, hasHeading = strings.TrimSpace(atxClose.ReplaceAllString(m[1], "")), true
-			prose = nil
-			continue
-		}
-		if t := strings.TrimSpace(line); t != "" {
-			prose = append(prose, t)
-			afterProse = true
 		}
 	}
 	// CommonMark runs an unclosed fence to the end of the document.
@@ -107,6 +83,46 @@ func scan(text string) (blocks []block, live []liveLine) {
 		blocks = append(blocks, *open)
 	}
 	return blocks, live
+}
+
+// reasons gives the reason a declaration in each block carries, keyed by the line of the block's
+// opening fence: the nearest heading above the block plus the prose between them, or "" when no
+// heading is above it. It reads the live lines scan returned, so fences and comments hide prose
+// and headings here the same way they hide obligations.
+func reasons(blocks []block, live []liveLine) map[int]string {
+	opens := map[int]bool{}
+	for _, b := range blocks {
+		opens[b.line] = true
+	}
+	why := map[int]string{}
+	var (
+		heading    string
+		hasHeading bool
+		prose      []string
+		proseLine  int // the line of the last prose read, 0 before any
+	)
+	for _, ll := range live {
+		// A setext underline needs prose on the line right above it.
+		afterProse := proseLine > 0 && proseLine == ll.line-1
+		switch m := atx.FindStringSubmatch(ll.text); {
+		case opens[ll.line]:
+			why[ll.line] = reason(hasHeading, heading, prose)
+			// Prose read before a block explains that block, not the next one.
+			prose = nil
+		case afterProse && setext.MatchString(ll.text):
+			heading, hasHeading = prose[len(prose)-1], true
+			prose = nil
+		case m != nil:
+			heading, hasHeading = strings.TrimSpace(atxClose.ReplaceAllString(m[1], "")), true
+			prose = nil
+		default:
+			if t := strings.TrimSpace(ll.text); t != "" {
+				prose = append(prose, t)
+				proseLine = ll.line
+			}
+		}
+	}
+	return why
 }
 
 func reason(hasHeading bool, heading string, prose []string) string {

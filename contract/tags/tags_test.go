@@ -193,9 +193,35 @@ func TestATagOutsideTheContractIsAnError(t *testing.T) {
 			t.Errorf("%s came from outside the Contract", ct)
 		}
 	}
+	// flinch reads tags only in test files, and skips what the go command ignores: a file whose
+	// name starts with _ and anything under testdata.
+	for _, file := range []string{"internal/x/note.go", "internal/x/_old_test.go", "internal/x/testdata/t_test.go"} {
+		if lines := in(ps, file); len(lines) > 0 {
+			t.Errorf("errors in %s at lines %v, want none", file, lines)
+		}
+	}
 	// The unit test in the clean module has no tag, so it's fine.
 	if _, ps := scan(t, "clean"); len(in(ps, "internal/x/x_test.go")) > 0 {
 		t.Errorf("an untagged unit test is an error: %v", ps)
+	}
+}
+
+// Contract: tags/T9
+func TestATagOnNoContractTestIsAnError(t *testing.T) {
+	_, ps := scan(t, "broken")
+	// A tag with a blank line under it, a tag on a helper function, and a tag in a helper directory
+	// inside the Contract all sit on no Contract test.
+	for _, p := range []place{
+		{"contract/alpha/alpha_test.go", 16},
+		{"contract/beta/beta_test.go", 8},
+		{"contract/helpers/h_test.go", 5},
+	} {
+		if at(ps, p.Path, p.Line) != 1 {
+			t.Errorf("want one error at %s:%d, got %v", p.Path, p.Line, ps)
+		}
+	}
+	if _, ps := scan(t, "clean"); len(ps) > 0 {
+		t.Errorf("every tag in the clean module sits on a Contract test, but problems = %v", ps)
 	}
 }
 
@@ -219,6 +245,9 @@ func TestFlinchContractNeedsNoToolchainAndReportsWhatAFullRunWould(t *testing.T)
 		{"contract/alpha/alpha_test.go", 33},
 		{"contract/alpha/alpha_test.go", 36},
 		{"contract/alpha/alpha_test.go", 38},
+		{"contract/alpha/alpha_test.go", 16},
+		{"contract/beta/beta_test.go", 8},
+		{"contract/helpers/h_test.go", 5},
 		{"contract/beta/README.md", 4},
 		{"internal/x/never_test.go", 7},
 		{"internal/x/x_test.go", 5},
