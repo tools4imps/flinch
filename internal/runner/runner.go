@@ -8,6 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -308,8 +311,22 @@ func (b *Baseline) undecidedRun(err error) error {
 }
 
 // Reach returns the Contract tests whose lone run reached a coverage block holding the position.
-// file is module-relative and slash-separated.
+// file is module-relative and slash-separated. Coverage leaves two kinds of code in no block: the
+// expressions of a case clause, and the rest of a statement after a function literal in it. For a
+// position in either, Reach answers for the statement that runs it, which starts in a block: the
+// switch or select statement that holds the case clause, or else the innermost statement that holds
+// the position.
 func (b *Baseline) Reach(file string, line, col int) []model.TestRef {
+	set := b.reach(file, line, col)
+	if len(set) == 0 {
+		if p := b.anchor(file, line, col); p.IsValid() {
+			set = b.reach(file, p.Line, p.Column)
+		}
+	}
+	return sortedRefs(set)
+}
+
+func (b *Baseline) reach(file string, line, col int) map[model.TestRef]bool {
 	set := map[model.TestRef]bool{}
 	for _, bl := range b.blocks[file] {
 		if bl.contains(line, col) {
@@ -318,7 +335,63 @@ func (b *Baseline) Reach(file string, line, col int) []model.TestRef {
 			}
 		}
 	}
-	return sortedRefs(set)
+	return set
+}
+
+// anchor returns where the statement that runs a position starts: the switch or select statement
+// when the position is in a case clause's expressions, and otherwise the innermost statement that
+// holds it. It returns the zero Position when no statement holds the position.
+func (b *Baseline) anchor(file string, line, col int) token.Position {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filepath.Join(b.o.Root, filepath.FromSlash(file)), nil, parser.SkipObjectResolution)
+	if err != nil {
+		return token.Position{}
+	}
+	holds := func(from, to token.Pos) bool {
+		a, z := fset.Position(from), fset.Position(to)
+		return span{a.Line, a.Column, z.Line, z.Column}.contains(line, col)
+	}
+	// inCase reports whether s is a switch or select statement with a case clause whose expressions
+	// hold the position.
+	inCase := func(s ast.Stmt) bool {
+		var body *ast.BlockStmt
+		switch s := s.(type) {
+		case *ast.SwitchStmt:
+			body = s.Body
+		case *ast.TypeSwitchStmt:
+			body = s.Body
+		case *ast.SelectStmt:
+			body = s.Body
+		default:
+			return false
+		}
+		for _, c := range body.List {
+			var colon token.Pos
+			switch c := c.(type) {
+			case *ast.CaseClause:
+				colon = c.Colon
+			case *ast.CommClause:
+				colon = c.Colon
+			}
+			if holds(c.Pos(), colon) {
+				return true
+			}
+		}
+		return false
+	}
+	var at token.Pos
+	ast.Inspect(f, func(n ast.Node) bool {
+		s, ok := n.(ast.Stmt)
+		if ok && holds(s.Pos(), s.End()) {
+			at = s.Pos()
+			// The case clause starts in no block either, so the switch is as far in as Reach goes.
+			if inCase(s) {
+				return false
+			}
+		}
+		return true
+	})
+	return fset.Position(at)
 }
 
 // ReachSpan returns the Contract tests whose lone run reached a coverage block that overlaps the span
@@ -345,8 +418,8 @@ func (b *Baseline) Linking(importPath string) []model.TestRef {
 }
 
 // parallel calls fn for 0..n-1 on up to jobs goroutines. When calls fail it returns the error of the
-// lowest index, so the same failures always produce the same report. The first failure stops calls
-// that haven't started.
+// lowest index, so the same failures always produce the same report. The first failure, or ctx
+// ending, stops calls that haven't started.
 func parallel(ctx context.Context, jobs, n int, fn func(ctx context.Context, i int) error) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -367,6 +440,10 @@ func parallel(ctx context.Context, jobs, n int, fn func(ctx context.Context, i i
 	}
 feed:
 	for i := 0; i < n; i++ {
+		// A worker may be waiting when ctx has already ended, and select would then pick at random.
+		if ctx.Err() != nil {
+			break
+		}
 		select {
 		case next <- i:
 		case <-ctx.Done():
