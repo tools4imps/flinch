@@ -13,7 +13,8 @@ import (
 )
 
 // Text writes the report for people: a summary, then each kind of finding worst first, then the exit
-// code. Lists are sorted by path and line, and unheld mutants are grouped by primitive first.
+// code. Obligations keep Contract order, other lists are sorted by path and line, and unheld mutants
+// are grouped by primitive first.
 func Text(w io.Writer, r *Report) error {
 	b := bufio.NewWriter(w)
 	t := &text{w: b, r: r}
@@ -90,7 +91,7 @@ func (t *text) summary() {
 	t.line("  %s", t.build())
 }
 
-// soleHolds prints each obligation's sole-hold count, one line per primitive, in id order.
+// soleHolds prints each obligation's sole-hold count, one line per primitive, in Contract order.
 func (t *text) soleHolds(os []matrix.Obligation) {
 	if len(os) == 0 {
 		return
@@ -103,7 +104,7 @@ func (t *text) soleHolds(os []matrix.Obligation) {
 			t.line("    %s  %s", prim, strings.Join(parts, ", "))
 		}
 	}
-	for _, o := range sortedObligations(os) {
+	for _, o := range os {
 		p, id := splitID(o.ID)
 		if p != prim {
 			flush()
@@ -115,14 +116,14 @@ func (t *text) soleHolds(os []matrix.Obligation) {
 }
 
 func (t *text) scope() string {
-	// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
-	if t.r.Since != "" {
+	switch {
+	case t.r.Since != "":
 		return "scoped run, --since " + t.r.Since
-	}
-	if t.r.Scoped {
+	case t.r.Scoped:
 		return "scoped run"
+	default:
+		return "full run"
 	}
-	return "full run"
 }
 
 func (t *text) build() string {
@@ -262,7 +263,7 @@ func (t *text) broken() {
 
 func (t *text) hollow() {
 	var os []matrix.Obligation
-	for _, o := range sortedObligations(t.r.Matrix.Obligations) {
+	for _, o := range t.r.Matrix.Obligations {
 		if o.Hollow {
 			os = append(os, o)
 		}
@@ -278,14 +279,14 @@ func (t *text) hollow() {
 				reached++
 			}
 		}
-		// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
-		if len(o.Tests) == 0 {
+		switch {
+		case len(o.Tests) == 0:
 			t.line("  %s  no Contract test names it", o.ID)
-		} else if reached == 0 && len(o.Tests) == 1 {
+		case reached == 0 && len(o.Tests) == 1:
 			t.line("  %s  its test reaches no mutant", o.ID)
-		} else if reached == 0 {
+		case reached == 0:
 			t.line("  %s  its %d tests reach no mutant", o.ID, len(o.Tests))
-		} else {
+		default:
 			t.line("  %s  %s ran against %s and killed none", o.ID, plural(len(o.Tests), "test", "tests"), plural(reached, "mutant", "mutants"))
 		}
 		t.line("    to clear: rewrite its tests to check what its code does, or drop an obligation that promises nothing")
@@ -305,7 +306,7 @@ func ranAny(ran, tests []model.TestRef) bool {
 
 func (t *text) crashOnly() {
 	var os []matrix.Obligation
-	for _, o := range sortedObligations(t.r.Matrix.Obligations) {
+	for _, o := range t.r.Matrix.Obligations {
 		if o.CrashOnly {
 			os = append(os, o)
 		}

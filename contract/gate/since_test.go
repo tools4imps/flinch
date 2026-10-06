@@ -516,3 +516,65 @@ func TestARunSinceARefMutatesChangedLinesAndChangedPrimitives(t *testing.T) {
 		t.Errorf("with calc's Contract changed, --since HEAD mutates %q, want all of calc's code, %q", ids, want)
 	}
 }
+
+// Contract: gate/G3
+func TestAttributesFilesNeverHideChangedLines(t *testing.T) {
+	cleanGit(t)
+	for _, where := range []string{"repository", "info", "global"} {
+		t.Run(where, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, filepath.Join(root, "a.go"), lines(5))
+			if where == "repository" {
+				write(t, filepath.Join(root, ".gitattributes"), "*.go -diff\n")
+			}
+			newRepo(t, root)
+			switch where {
+			case "info":
+				write(t, filepath.Join(root, ".git", "info", "attributes"), "*.go -diff\n")
+			case "global":
+				attributes := filepath.Join(t.TempDir(), "attributes")
+				write(t, attributes, "*.go binary\n")
+				cfg := filepath.Join(t.TempDir(), "gitconfig")
+				write(t, cfg, "[core]\n\tattributesFile = "+attributes+"\n")
+				t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+			}
+			editLines(t, filepath.Join(root, "a.go"), func(ls []string) []string { ls[2] = "three"; return ls })
+			write(t, filepath.Join(root, "b.go"), lines(2))
+
+			c := changed(t, root, "HEAD")
+			sameLines(t, "a.go", touched(c, "a.go", 6), []int{3})
+			sameLines(t, "b.go", touched(c, "b.go", 2), []int{1, 2})
+		})
+	}
+}
+
+// Contract: gate/G3
+func TestTheWorkingTreeIsWhatCounts(t *testing.T) {
+	cleanGit(t)
+	root := t.TempDir()
+	write(t, filepath.Join(root, ".gitignore"), "skip.go\n")
+	for _, f := range []string{"staged.go", "both.go", "unstaged.go"} {
+		write(t, filepath.Join(root, f), lines(6))
+	}
+	newRepo(t, root)
+
+	editLines(t, filepath.Join(root, "staged.go"), func(ls []string) []string { ls[1] = "two"; return ls })
+	gitIn(t, root, "add", "staged.go")
+	// Staged on line 2, then put back in the working tree, where line 5 changes instead.
+	editLines(t, filepath.Join(root, "both.go"), func(ls []string) []string { ls[1] = "two"; return ls })
+	gitIn(t, root, "add", "both.go")
+	editLines(t, filepath.Join(root, "both.go"), func(ls []string) []string { ls[1], ls[4] = "line 2", "five"; return ls })
+	editLines(t, filepath.Join(root, "unstaged.go"), func(ls []string) []string { ls[3] = "four"; return ls })
+	write(t, filepath.Join(root, "untracked.go"), lines(3))
+	write(t, filepath.Join(root, "skip.go"), lines(3))
+
+	c := changed(t, root, "HEAD")
+	sameLines(t, "staged.go", touched(c, "staged.go", 6), []int{2})
+	sameLines(t, "both.go", touched(c, "both.go", 6), []int{5})
+	sameLines(t, "unstaged.go", touched(c, "unstaged.go", 6), []int{4})
+	sameLines(t, "untracked.go", touched(c, "untracked.go", 3), []int{1, 2, 3})
+	sameLines(t, "skip.go", touched(c, "skip.go", 3), nil)
+	if got, want := c.Paths(), []string{"both.go", "staged.go", "unstaged.go", "untracked.go"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("changed paths = %q, want %q", got, want)
+	}
+}

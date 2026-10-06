@@ -9,9 +9,10 @@ import (
 	"github.com/tools4imps/flinch/internal/problem"
 )
 
-// The JSON shapes. Field order here is the order in the output, every list is sorted before it's
-// written, and the one map, timing, is written by encoding/json in key order. Lists are never null,
-// so a consumer can range over any of them without a check.
+// The JSON shapes. Field order here is the order in the output. Obligations keep Contract order,
+// every other list is sorted before it's written, and the one map, timing, is written by
+// encoding/json in key order. Lists are never null, so a consumer can range over any of them
+// without a check.
 type jsonReport struct {
 	SchemaVersion      string             `json:"schema_version"`
 	Summary            jsonSummary        `json:"summary"`
@@ -175,7 +176,7 @@ func JSON(w io.Writer, r *Report) error {
 		for _, mu := range sortedMutants(m.Mutants) {
 			out.Mutants = append(out.Mutants, mutant(mu))
 		}
-		for _, o := range sortedObligations(m.Obligations) {
+		for _, o := range m.Obligations {
 			out.Summary.Obls.SoleHoldsSum += len(o.SoleHolds)
 			out.Obligations = append(out.Obligations, jsonObligation{
 				ID: o.ID, Tests: refs(o.Tests), Holds: sortedStrs(o.Holds), SoleHolds: sortedStrs(o.SoleHolds),

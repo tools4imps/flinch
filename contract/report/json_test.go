@@ -78,7 +78,7 @@ func in(shuffled bool) matrix.Input {
 		nv.Hash: {d, a}, erase.Hash: {a, d}, skipped.Hash: {d, a},
 	}
 	input := matrix.Input{
-		Obligations: []string{"calc/C1", "calc/C2", "calc/C10", "dial/D1"},
+		Obligations: []string{"calc/C1", "calc/C10", "calc/C2", "dial/D1"}, // as the READMEs list them
 		Tests:       tests,
 		Mutants:     []model.Mutant{sameLine, sameCol, killed, lived, unreached, declared, wild, nv, erase, skipped},
 		Rows:        rows,
@@ -93,8 +93,7 @@ func in(shuffled bool) matrix.Input {
 		return input
 	}
 	reverse := func(s []model.TestRef) []model.TestRef { s = slices.Clone(s); slices.Reverse(s); return s }
-	input.Obligations = slices.Clone(input.Obligations)
-	slices.Reverse(input.Obligations)
+	// Obligations come in Contract order, which no run changes, so they stay as they are.
 	input.Tests = slices.Clone(input.Tests)
 	slices.Reverse(input.Tests)
 	for i := range input.Tests {
@@ -275,7 +274,7 @@ func TestJSONListsEveryMutantAndIsTheSameForTheSameRun(t *testing.T) {
 	for _, o := range rep.Obligations {
 		obs = append(obs, o.ID)
 	}
-	if want := []string{"calc/C1", "calc/C2", "calc/C10", "dial/D1"}; !reflect.DeepEqual(obs, want) {
+	if want := []string{"calc/C1", "calc/C10", "calc/C2", "dial/D1"}; !reflect.DeepEqual(obs, want) {
 		t.Errorf("obligations are listed as %q, want %q", obs, want)
 	}
 	if want := []string{"calc/TestA", "calc/TestB"}; !reflect.DeepEqual(rep.Obligations[0].Tests, want) {

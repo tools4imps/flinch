@@ -17,12 +17,6 @@ Each of these runs only after an earlier check found its two sides unequal, or o
 which no run holds twice. Less than and less than or equal agree on every input they see.
 
 ```equivalent
-internal/report.lessObligation: pa < pb -> pa <= pb
-internal/report.natural: len(ta) < len(tb) -> len(ta) <= len(tb)
-internal/report.natural: ta < tb -> ta <= tb
-internal/report.natural: na < nb -> na <= nb
-internal/report.natural: a[0] < b[0] -> a[0] <= b[0]
-internal/report.natural: len(a) < len(b) -> len(a) <= len(b)
 internal/report.lessMutant: a.File < b.File -> a.File <= b.File
 internal/report.lessMutant: a.Line < b.Line -> a.Line <= b.Line
 internal/report.lessMutant: a.Col < b.Col -> a.Col <= b.Col

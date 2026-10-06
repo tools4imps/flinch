@@ -42,12 +42,12 @@ func count(m *matrix.Result) counts {
 			c.NoVerdict++
 		case model.Declared:
 			c.Declared++
-			// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
-			if mu.Declaration != nil && mu.Declaration.Wildcard {
+			switch {
+			case mu.Declaration != nil && mu.Declaration.Wildcard:
 				c.Wildcard++
-			} else if mu.Declaration != nil && mu.Declaration.Kind == "equivalent" {
+			case mu.Declaration != nil && mu.Declaration.Kind == "equivalent":
 				c.Equivalent++
-			} else {
+			default:
 				c.Unpromised++
 			}
 		}
@@ -56,11 +56,12 @@ func count(m *matrix.Result) counts {
 
 	c.Obligations = len(m.Obligations)
 	for _, o := range m.Obligations {
-		if len(o.Holds) > 0 {
+		switch {
+		case len(o.Holds) > 0:
 			c.Holding++
-		} else if o.Hollow {
+		case o.Hollow:
 			c.Hollow++
-		} else {
+		default:
 			c.Unjudged++
 		}
 		if o.CrashOnly {
@@ -89,67 +90,12 @@ func (c counts) score() (float64, bool) {
 	return math.Floor(1000*float64(c.Killed)/float64(d)) / 10, true
 }
 
-// lessObligation orders full obligation ids by primitive, then by id with runs of digits compared
-// as numbers, so skip/K2 comes before skip/K10.
-func lessObligation(a, b string) bool {
-	pa, ia := splitID(a)
-	pb, ib := splitID(b)
-	if pa != pb {
-		return pa < pb
-	}
-	return natural(ia, ib)
-}
-
+// splitID splits a full obligation id such as "skip/K1" into its primitive and its own id.
 func splitID(id string) (primitive, local string) {
 	if i := strings.LastIndexByte(id, '/'); i >= 0 {
 		return id[:i], id[i+1:]
 	}
 	return "", id
-}
-
-func natural(a, b string) bool {
-	for a != "" && b != "" {
-		da, db := isDigit(a[0]), isDigit(b[0])
-		if da && db {
-			na, ra := leadingDigits(a)
-			nb, rb := leadingDigits(b)
-			if na != nb {
-				// Compare by length first, then text, so the numbers can be of any size.
-				ta, tb := strings.TrimLeft(na, "0"), strings.TrimLeft(nb, "0")
-				if len(ta) != len(tb) {
-					return len(ta) < len(tb)
-				}
-				if ta != tb {
-					return ta < tb
-				}
-				return na < nb
-			}
-			a, b = ra, rb
-			continue
-		}
-		if a[0] != b[0] {
-			return a[0] < b[0]
-		}
-		a, b = a[1:], b[1:]
-	}
-	return len(a) < len(b)
-}
-
-func isDigit(c byte) bool { return '0' <= c && c <= '9' }
-
-func leadingDigits(s string) (digits, rest string) {
-	i := 0
-	for i < len(s) && isDigit(s[i]) {
-		i++
-	}
-	return s[:i], s[i:]
-}
-
-// sortedObligations returns the obligations in id order.
-func sortedObligations(os []matrix.Obligation) []matrix.Obligation {
-	out := append([]matrix.Obligation(nil), os...)
-	sort.SliceStable(out, func(i, j int) bool { return lessObligation(out[i].ID, out[j].ID) })
-	return out
 }
 
 // sortedMutants returns the mutants ordered by file, line, column and id.

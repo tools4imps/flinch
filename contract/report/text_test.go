@@ -126,14 +126,14 @@ func TestTheOtherFindingsFollowEachListSorted(t *testing.T) {
 
 	inOrder(t, strings.Join(section(t, out, "Hollow obligations"), "\n"),
 		"\n  alpha/A1  no Contract test names it\n",
+		"\n  calc/C5  1 test ran against 2 mutants and killed none\n",
 		"\n  calc/C2  no Contract test names it\n",
 		"\n  calc/C3  its test reaches no mutant\n",
 		"\n  calc/C4  its 2 tests reach no mutant\n",
-		"\n  calc/C5  1 test ran against 2 mutants and killed none\n",
 	)
 
 	crash := section(t, out, "Held only by crashes")
-	inOrder(t, strings.Join(crash, "\n"), "\n  calc/C10  ", "\n  dial/D1  ", "\n  dial/D2  ")
+	inOrder(t, strings.Join(crash, "\n"), "\n  calc/C10  ", "\n  dial/D2  ", "\n  dial/D1  ")
 	if n := strings.Count(strings.Join(crash, "\n"), "\n  calc/C1  "); n > 0 {
 		t.Errorf("calc/C1 has an assertion kill and is listed as held only by crashes")
 	}
@@ -154,14 +154,14 @@ func TestTheOtherFindingsFollowEachListSorted(t *testing.T) {
 
 	inOrder(t, strings.Join(section(t, out, "Outside the Contract"), "\n"), "\n  cmd/x\n", "\n  internal/zz\n")
 
-	// Obligations sort by primitive, then by id with runs of digits read as numbers.
-	ids := []string{"calc/C10", "calc/CX1", "calc/C9A", "calc/C003", "calc/C2", "calc/B9", "calc/C9", "beta/Z1"}
+	// Obligations keep Contract order, which no sort by id would give.
+	ids := []string{"beta/Z1", "calc/K9", "calc/K10", "calc/K2", "calc/A1"}
 	var obs []matrix.Obligation
 	for _, id := range ids {
 		obs = append(obs, matrix.Obligation{ID: id, Primitive: strings.Split(id, "/")[0], Judged: true, Hollow: true, CrashOnly: true})
 	}
 	ordered := text(t, &report.Report{Matrix: &matrix.Result{Obligations: obs}})
-	want := []string{"beta/Z1", "calc/B9", "calc/C2", "calc/C003", "calc/C9", "calc/C9A", "calc/C10", "calc/CX1"}
+	want := ids
 	for _, title := range []string{"Hollow obligations", "Held only by crashes"} {
 		var got []string
 		for _, l := range section(t, ordered, title)[1:] {
@@ -278,8 +278,8 @@ func TestTheSummaryCountsSoleHoldsDeclarationsAndTheScore(t *testing.T) {
 		"  9 obligations: 4 hold code, 5 hollow, 3 held only by crashes, 7 hold no mutant alone",
 		"  sole holds per obligation:",
 		"    alpha  A1 0",
-		"    calc  C1 1, C2 0, C3 0, C4 0, C5 0, C10 1",
-		"    dial  D1 0, D2 0",
+		"    calc  C1 1, C10 1, C5 0, C2 0, C3 0, C4 0",
+		"    dial  D2 0, D1 0",
 		"  8 Contract tests: 2 blind",
 		"  full run",
 		"  flinch 0.1.0, go1.26.1 darwin/arm64, tags a,b",

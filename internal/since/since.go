@@ -83,11 +83,12 @@ func Changed(ctx context.Context, root, ref string) (*Changes, error) {
 	}
 	var untracked []string
 	for _, name := range strings.Split(string(out), "\x00") {
-		// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
-		if strings.HasSuffix(name, "/") {
+		switch {
+		case name == "":
+		case strings.HasSuffix(name, "/"):
 			// A nested repository, which git lists whole and can't add, so only its path counts.
 			c.paths[name] = true
-		} else if name != "" {
+		default:
 			untracked = append(untracked, name)
 		}
 	}
@@ -264,16 +265,16 @@ func parsePatch(out []byte) (map[string][]span, error) {
 	// "diff --git" and the file's first hunk.
 	header := false
 	for _, line := range strings.Split(string(out), "\n") {
-		// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
-		if strings.HasPrefix(line, "diff --git ") {
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
 			file, header = "", true
-		} else if header && strings.HasPrefix(line, "+++ ") {
+		case header && strings.HasPrefix(line, "+++ "):
 			name, err := headerPath(line[len("+++ "):])
 			if err != nil {
 				return nil, err
 			}
 			file = name
-		} else if strings.HasPrefix(line, "@@ ") {
+		case strings.HasPrefix(line, "@@ "):
 			header = false
 			if file == "" {
 				continue

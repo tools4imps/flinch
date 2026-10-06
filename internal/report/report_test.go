@@ -44,7 +44,7 @@ func fixture(reorder bool) *Report {
 
 	mutants := []model.Mutant{killed, lived, unreached, erase, skipped, outside, crash, declared, brokenM}
 	tests := []model.Test{tSkip, tBlind, tCrash, tGate}
-	obligations := []string{"skip/K1", "skip/K2", "skip/K10", "gate/G1", "gate/G2"}
+	obligations := []string{"gate/G1", "gate/G2", "skip/K1", "skip/K2", "skip/K10"}
 	if reorder {
 		mutants = []model.Mutant{brokenM, declared, crash, outside, skipped, erase, unreached, lived, killed}
 		tests = []model.Test{tGate, tCrash, tBlind, tSkip}
@@ -352,15 +352,6 @@ func TestJSONWithoutMatrixHasEmptyLists(t *testing.T) {
 	for _, key := range []string{`"mutants": []`, `"obligations": []`, `"tests": []`, `"outside": []`, `"broken_declarations": []`, `"tags": []`, `"score": null`} {
 		if !bytes.Contains(raw, []byte(key)) {
 			t.Errorf("JSON lacks %s:\n%s", key, raw)
-		}
-	}
-}
-
-func TestNaturalObligationOrder(t *testing.T) {
-	cases := [][2]string{{"skip/K2", "skip/K10"}, {"diff/D9", "skip/K1"}, {"a/X1", "a/Y1"}, {"a/K1", "a/K1a"}}
-	for _, c := range cases {
-		if !lessObligation(c[0], c[1]) || lessObligation(c[1], c[0]) {
-			t.Errorf("want %s before %s", c[0], c[1])
 		}
 	}
 }
