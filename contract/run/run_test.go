@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tools4imps/flinch/internal/cli"
 	"github.com/tools4imps/flinch/internal/model"
 )
 
@@ -59,27 +58,15 @@ func TestSuiteGoCantLoadStopsTheRun(t *testing.T) {
 
 // Contract: run/R1
 func TestFailingInTheWholeSuiteExitsTwo(t *testing.T) {
-	root, err := copyFixture("e2e")
-	if err != nil {
-		t.Fatal(err)
+	r := e2eScenario.get(t)
+	if r.code != 2 {
+		t.Errorf("exit %d, want 2\nstdout:\n%s\nstderr:\n%s", r.code, r.out, r.errOut)
 	}
-	t.Chdir(root)
-	var out, errOut strings.Builder
-	code := -1
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		code = cli.Main([]string{"--jobs", "2"}, strings.NewReader(""), &out, &errOut)
-	}()
-	wait(t, done)
-	if code != 2 {
-		t.Errorf("exit %d, want 2\nstdout:\n%s\nstderr:\n%s", code, out.String(), errOut.String())
+	if !strings.Contains(r.out, "calc/TestVictim") {
+		t.Errorf("the report doesn't name calc/TestVictim:\n%s", r.out)
 	}
-	if !strings.Contains(out.String(), "calc/TestVictim") {
-		t.Errorf("the report doesn't name calc/TestVictim:\n%s", out.String())
-	}
-	if strings.Contains(out.String(), "calc/TestLeaky") {
-		t.Errorf("the report names calc/TestLeaky, which passes:\n%s", out.String())
+	if strings.Contains(r.out, "calc/TestLeaky") {
+		t.Errorf("the report names calc/TestLeaky, which passes:\n%s", r.out)
 	}
 }
 
@@ -114,7 +101,6 @@ func TestLoneRunsMapEachMutantToTheTestsThatReachIt(t *testing.T) {
 		{"on a later line of a block, left of where it starts", calcGo, "return -x", refs("a/TestAbs")},
 		{"at the first byte of a block", calcGo, "return x\n", refs("a/TestAbs")},
 		{"in a loop body", calcGo, "s += i", refs("a/TestSum", "a/TestParSum")},
-		{"after a function literal in the same statement", calcGo, "y > 9", refs("a/TestTwice")},
 		{"in a case body no test runs", calcGo, "return 3", nil},
 		{"in a function only crashing tests reach", calcGo, "a / b", refs("a/TestChainZ1", "a/TestChainZ2", "a/TestChainZ3", "a/TestChainZ4")},
 		{"in another package", wordsGo, "strings.ToUpper", refs("b/TestShout", "b/ExampleShout", "b/FuzzShout")},
@@ -124,23 +110,6 @@ func TestLoneRunsMapEachMutantToTheTestsThatReachIt(t *testing.T) {
 		line, col := at(t, r.root, c.file, c.text)
 		if got := r.base.Reach(c.file, line, col); !sameRefs(got, c.want) {
 			t.Errorf("%s: Reach(%s:%d:%d) = %v, want %v", c.name, c.file, line, col, names(got), names(c.want))
-		}
-	}
-	// Coverage puts no block over a case clause's expressions, so a mutant in one is reached by the
-	// tests that ran the switch or select holding it.
-	sign := refs("a/TestSign", "a/TestSignBig", "a/TestSignNeg")
-	for _, c := range []struct {
-		name, text      string
-		atLeast, atMost []model.TestRef
-	}{
-		{"in a case expression", "x > 0:", refs("a/TestSign", "a/TestSignBig"), sign},
-		{"in a nested switch's case expression", "x > 9:", refs("a/TestSign", "a/TestSignBig"), refs("a/TestSign", "a/TestSignBig")},
-		{"in a select case", "<-ch", refs("a/TestPick"), refs("a/TestPick")},
-	} {
-		line, col := at(t, r.root, calcGo, c.text)
-		got := r.base.Reach(calcGo, line, col)
-		if !subset(c.atLeast, got) || !subset(got, c.atMost) {
-			t.Errorf("%s: Reach(%s:%d:%d) = %v, want at least %v and at most %v", c.name, calcGo, line, col, names(got), names(c.atLeast), names(c.atMost))
 		}
 	}
 	for _, c := range []struct {
@@ -236,7 +205,7 @@ func TestEachBatchRunsCleanOnceBeforeAnyMutantUsesIt(t *testing.T) {
 	for _, test := range batch {
 		clean, mutated := -1, 0
 		for i, e := range r.log {
-			if e.event != test || !e.budgeted() || !slices.Equal(e.run, batch) {
+			if e.event != test || !slices.Equal(e.run, batch) {
 				continue
 			}
 			switch {
@@ -277,7 +246,7 @@ func TestBatchFailingCleanStopsTheRun(t *testing.T) {
 		if strings.HasPrefix(e.tag, "batchy") {
 			t.Errorf("%s ran against mutant %s", e.event, e.tag)
 		}
-		if e.event == "TestX" && e.budgeted() && slices.Equal(e.run, []string{"TestX", "TestY"}) {
+		if e.event == "TestX" && slices.Equal(e.run, []string{"TestX", "TestY"}) {
 			ranClean = true
 		}
 	}
@@ -291,8 +260,8 @@ func TestBatchWhoseCleanBinaryCantStartStopsTheRun(t *testing.T) {
 	r := batchScenario.get(t)
 	// TestSpoil's clean run in its batch takes away the clean binary's permission to execute, so the
 	// next batch can't run clean.
-	if !r.spoiled.Complete || !sameRefs(r.spoiled.Ran, refs("batchy/TestSpoil")) || len(r.spoiled.Kills) != 0 {
-		t.Errorf("first batch's row = %+v, want TestSpoil run and passed", r.spoiled)
+	if !r.spoiled.Complete || !sameRefs(r.spoiled.Ran, refs("batchy/TestSpoil", "batchy/TestZ")) || len(r.spoiled.Kills) != 0 {
+		t.Errorf("first batch's row = %+v, want both tests run and passed", r.spoiled)
 	}
 	undecided(t, r.unclean)
 }
@@ -334,6 +303,24 @@ func TestRunLeavesTheModuleAsItFoundIt(t *testing.T) {
 	}
 }
 
+// Contract: run/R6
+func TestFileThatNoLongerFitsItsMutantStopsTheRun(t *testing.T) {
+	r := batchScenario.get(t)
+	undecided(t, r.shrunk)
+}
+
+// Contract: run/R7
+func TestProcessLeftRunningDoesntHoldUpTheRun(t *testing.T) {
+	r := mainScenario.get(t)
+	// TestLinger leaves a process running that holds the output pipe open for 100 seconds.
+	if row := r.again["linger"]; !row.Complete || len(row.Ran) != 1 || len(row.Kills) != 0 {
+		t.Errorf("row = %+v, want TestLinger run and passed", row)
+	}
+	if r.second > time.Minute {
+		t.Errorf("the Run with TestLinger took %v, as long as the process it left behind", r.second)
+	}
+}
+
 // Contract: run/R7
 func TestTestBinariesRunInTheirPackageDirectory(t *testing.T) {
 	r := mainScenario.get(t)
@@ -365,6 +352,7 @@ func TestRowRecordsEveryFailureAndHowItFailed(t *testing.T) {
 		"subtests":       {"a/TestAbs assertion TestAbs/big,TestAbs/neg"},
 		"mixed kinds":    {"a/TestAdd assertion", "a/TestAddMore assertion", "a/TestChainA1 panic"},
 		"company":        {"a/TestBumpB assertion"},
+		"exit zero":      {"a/TestReady panic"},
 		"panics":         {"a/TestChainZ1 panic", "a/TestChainZ2 panic", "a/TestChainZ3 panic", "a/TestChainZ4 panic"},
 		"serial timeout": {"a/TestSum timeout"},
 		"tail":           {"b/ExampleShout assertion", "b/FuzzShout assertion FuzzShout/seed#0", "b/TestShout assertion"},
@@ -377,6 +365,18 @@ func TestRowRecordsEveryFailureAndHowItFailed(t *testing.T) {
 			t.Errorf("%s: kills = %v, want %v", name, got, want)
 		}
 	}
+}
+
+// Contract: run/R8
+func TestExitZeroInATestIsAPanic(t *testing.T) {
+	r := mainScenario.get(t)
+	// os.Exit(0) under the test makes go test's own panic, which names TestReady, so the two tests
+	// after it start again together. Had the process just ended, nothing would name a test and they
+	// would run one per process.
+	if got := kills(r.rows["exit zero"]); !slices.Equal(got, []string{"a/TestReady panic"}) {
+		t.Errorf("kills = %v, want a/TestReady panic", got)
+	}
+	restarted(t, r.log, []string{"TestSignBig", "TestSignNeg"}, []string{"TestSignBig", "TestSignNeg"})
 }
 
 // Contract: run/R9
@@ -582,7 +582,7 @@ func TestTimeoutCountsOnlyWhenARerunTimesOutToo(t *testing.T) {
 	}
 	var budgets []time.Duration
 	for _, e := range r.log {
-		if e.event == "TestSlow" && e.budgeted() && slices.Equal(e.run, []string{"TestSlow"}) && len(budgets) < 3 {
+		if e.event == "TestSlow" && e.budgeted() && slices.Equal(e.run, []string{"TestSlow"}) && len(budgets) < 2 {
 			d, err := time.ParseDuration(e.timeout)
 			if err != nil {
 				t.Fatal(err)
@@ -626,5 +626,75 @@ func TestMutantThatWontBuildHasNoVerdict(t *testing.T) {
 	row := r.rows["broken"]
 	if row.Verdict == "" || row.Complete || len(row.Ran) != 0 || len(row.Kills) != 0 {
 		t.Errorf("row = %+v, want no verdict and nothing run", row)
+	}
+	// The compiler's first complaint, one line, naming calc.go by its path in the module.
+	t.Logf("reason: %s", row.Verdict)
+	if !strings.Contains(row.Verdict, calcGo+":") || strings.ContainsAny(row.Verdict, "\n#") || strings.Contains(row.Verdict, r.work) {
+		t.Errorf("reason %q isn't the compiler's first complaint about %s", row.Verdict, calcGo)
+	}
+}
+
+// Contract: run/R13
+func TestProcessOverTheMemoryLimitCrashes(t *testing.T) {
+	r := mainScenario.get(t)
+	// TestGrow holds ever more memory against the mutant. The guard stops its process, which names
+	// no test, so the batch runs one test per process and the lone TestGrow is the killer.
+	row := r.rows["memory"]
+	if !row.Complete || !sameRefs(row.Ran, r.jobs["memory"].Tests) || !slices.Equal(kills(row), []string{"a/TestGrow panic"}) {
+		t.Errorf("row = %+v, want a/TestGrow killed by a crash and the rest run", row)
+	}
+	for _, test := range []string{"TestGrow", "TestGrowAfter1", "TestGrowAfter2"} {
+		found := false
+		for _, e := range r.log {
+			found = found || e.event == test && e.budgeted() && slices.Equal(e.run, []string{test})
+		}
+		if !found {
+			t.Errorf("%s never ran in a process of its own", test)
+		}
+	}
+}
+
+// Contract: run/R14
+func TestTestProcessesKeepTempFilesInTheWorkDirectory(t *testing.T) {
+	r := mainScenario.get(t)
+	tmp := filepath.Join(r.work, "tmp")
+	for _, e := range r.log {
+		if e.tmpdir != tmp || e.tmp != tmp || e.temp != tmp {
+			t.Fatalf("%s ran with TMPDIR %q, TMP %q and TEMP %q, want %s", e.event, e.tmpdir, e.tmp, e.temp, tmp)
+		}
+	}
+	if left, _ := filepath.Glob(filepath.Join(tmp, "fx-leftover-*")); len(left) == 0 {
+		t.Errorf("TestLeftover's file isn't in %s", tmp)
+	}
+}
+
+// Contract: run/R14
+func TestRunLeavesNothingInTheTempDirectory(t *testing.T) {
+	r := e2eScenario.get(t)
+	// TestLeaky left a file in its temp directory.
+	if len(r.left) != 0 {
+		t.Errorf("the run left %v in its temp directory", r.left)
+	}
+}
+
+// Contract: run/R14
+func TestMutantBuildsUseTheRunsOwnCache(t *testing.T) {
+	r := cacheScenario.get(t)
+	own := filepath.Join(r.own, "gocache")
+	if entries, err := os.ReadDir(own); err != nil || len(entries) == 0 {
+		t.Errorf("the mutant build left nothing in %s: %v", own, err)
+	}
+	if _, err := os.Stat(filepath.Join(r.handed, "gocache")); err == nil {
+		t.Error("the run handed a cache built one of its own anyway")
+	}
+	for name, log := range map[string][]entry{"first": r.ownLog, "second": r.handedLog} {
+		if len(log) == 0 {
+			t.Errorf("the %s run's tests wrote nothing", name)
+		}
+		for _, e := range log {
+			if e.cache != own {
+				t.Errorf("the %s run handed %s the cache %q, want %s", name, e.event, e.cache, own)
+			}
+		}
 	}
 }

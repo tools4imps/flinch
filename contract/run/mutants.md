@@ -104,17 +104,11 @@ internal/runner.Baseline.alone: b.progress("flinch: running %d Contract tests al
 
 ## Which step reports a failure, and in what words
 
-When a go command fails, or a suite's binary can't run, a later step that needs the same thing fails too, and the run stops with exit 2 or the mutant has no verdict either way. R1 promises the report names a test that fails, and R12 that a mutant that won't build has no verdict. Which step's reason the report shows, and how a reason words the go command's complaint, are left open.
+When a go command fails while Prove runs, or a suite's binary can't run, a later step that needs the same thing fails too, and the run stops with exit 2 either way. R1 promises the report names a test that fails. Which step's reason the report shows, and how a reason words a suite's failure, are left open.
 
 ```unpromised
-internal/runner.Baseline.goCmd: ctx.Err() != nil -> ctx.Err() == nil
-internal/runner.Baseline.goCmd: msg == "" -> msg != ""
-internal/runner.goError.Error: *
-internal/runner.firstError: *
-internal/runner.Baseline.unmask: *
 internal/runner.fails: *
 internal/runner.firstLine: *
-internal/runner.Baseline.build: err == nil -> err != nil
 internal/runner.Baseline.deps: return nil, err -> return nil, nil
 internal/runner.Baseline.link: return nil, undecidedGo(err, "go list can't load the Contract suite for "+s.Primitive) -> return nil, nil
 internal/runner.Baseline.whole: return undecidedGo(err, "the Contract suite for "+s.Primitive+" doesn't build") -> return nil
@@ -180,7 +174,7 @@ internal/runner.parallel: ctxErr == nil -> ctxErr != nil
 
 ## Calls the engine never makes
 
-The runner's API is flinch's own. The engine gives it an absolute module root, a work directory the runner can write, at least one job, only packages inside the module to cover, and jobs whose tests belong to suites Prove ran. What the runner does with anything else is left open.
+The runner's API is flinch's own. The engine gives it an absolute module root, a work directory the runner can write, at least one job, only packages inside the module to cover, jobs whose tests belong to suites Prove ran, and mutants whose start comes neither before the file nor after their end. What the runner does with anything else is left open.
 
 ```unpromised
 internal/runner.Prove: o.Jobs <= 0 -> o.Jobs < 0
@@ -189,24 +183,7 @@ internal/runner.Prove: return nil, err -> return nil, nil #2
 internal/runner.Baseline.job: return model.Row{}, err -> return model.Row{}, nil
 internal/runner.Baseline.link: err != nil || rel == ".." -> err != nil && rel == ".."
 internal/runner.Baseline.link: err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) -> err != nil || rel == ".." && strings.HasPrefix(rel, ".."+string(filepath.Separator))
-```
-
-## Files that change during a run
-
-Mutants come from the files as flinch read them before the run. When one changes or disappears before its mutant is built, the run can't go on, and how it stops is left open.
-
-```unpromised
 internal/runner.Baseline.overlay: m.Start < 0 || m.Start > m.End -> m.Start < 0 && m.Start > m.End
-internal/runner.Baseline.overlay: m.Start < 0 || m.Start > m.End || m.End > len(src) -> m.Start < 0 || m.Start > m.End && m.End > len(src)
-internal/runner.Baseline.job: return model.Row{}, err -> return model.Row{}, nil #3
-```
-
-## Processes a test leaves behind
-
-A test can start a process that keeps the output pipe open after the test binary exits. How long the runner waits for that pipe before it moves on is left open.
-
-```unpromised
-internal/runner.Baseline.runTests: 2 * time.Second -> 2 / time.Second
 ```
 
 ## What a row without a verdict lists

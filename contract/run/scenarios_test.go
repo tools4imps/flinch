@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tools4imps/flinch/internal/cli"
 	"github.com/tools4imps/flinch/internal/model"
 	"github.com/tools4imps/flinch/internal/runner"
 )
@@ -18,7 +19,8 @@ import (
 var (
 	aTests = []string{
 		"TestAdd", "TestAddMore", "TestAbs", "TestSum", "TestAfterSum1", "TestAfterSum2", "TestSlow", "TestSlowToo",
-		"TestNap1", "TestNap2", "TestTable", "TestReady", "TestReadsTestdata", "TestSign", "TestSignBig", "TestSignNeg", "TestTwice", "TestBumpA", "TestBumpB", "TestPick", "TestHold1", "TestHold2", "TestQuiet1", "TestQuiet2",
+		"TestNap1", "TestNap2", "TestTable", "TestReady", "TestReadsTestdata", "TestSign", "TestSignBig", "TestSignNeg", "TestBumpA", "TestBumpB", "TestHold1", "TestHold2", "TestGrow", "TestGrowAfter1", "TestGrowAfter2", "TestLinger", "TestLeftover",
+		"TestQuiet1", "TestQuiet2",
 		"TestChainA1", "TestChainZ1", "TestChainA2", "TestChainZ2", "TestChainA3", "TestChainZ3",
 		"TestChainA4", "TestChainZ4", "TestChainA5", "TestParFast", "TestParSum", "TestTagged",
 	}
@@ -39,7 +41,9 @@ const (
 // already ended.
 type mainRun struct {
 	root          string
+	work          string // the runner's work directory
 	base          *runner.Baseline
+	second        time.Duration // how long the second Run took
 	jobs          map[string]runner.Job
 	rows          map[string]model.Row // by job name
 	again         map[string]model.Row // the second Run, by job name
@@ -64,7 +68,11 @@ var mainScenario = newScenario(func(ctx context.Context) (*mainRun, error) {
 	if r.before, err = snapshot(root); err != nil {
 		return nil, err
 	}
-	o := runner.Options{Root: root, Jobs: 4, Work: filepath.Join(filepath.Dir(root), "work"), Progress: io.Discard, Tags: []string{"fxtag"}}
+	r.work = filepath.Join(filepath.Dir(root), "work")
+	o := runner.Options{
+		Root: root, Jobs: 4, Work: r.work, Progress: io.Discard, Tags: []string{"fxtag"},
+		MemoryLimit: 100 << 20,
+	}
 	r.base, err = runner.Prove(ctx, o, []runner.Suite{suite("a", aTests...), suite("b", bTests...)}, []string{fx + "/calc", fx + "/words"})
 	if err != nil {
 		return nil, err
@@ -87,6 +95,12 @@ var mainScenario = newScenario(func(ctx context.Context) (*mainRun, error) {
 		// TestSlowToo times out the first time, and every process after that exits without settling it.
 		{"rerun stalls", "return 1", `pause("fx.stall", 6*time.Second); println("\x16PASS"); os.Exit(1); return 1`, "", refs("a/TestSlowToo")},
 		{"subtests", "return -x", "return x", "", refs("a/TestAbs")},
+		// TestReady calls os.Exit(0), which go test treats as a panic.
+		{"exit zero", "return ready", "os.Exit(0); return ready", "", refs("a/TestReady", "a/TestSignBig", "a/TestSignNeg")},
+		// TestGrow holds ever more memory until the guard stops its process.
+		{"memory", "return 64", "hoard(); return 64", "", refs("a/TestGrow", "a/TestGrowAfter1", "a/TestGrowAfter2")},
+		// TestLinger leaves a process running that holds the output pipe open for 100 seconds.
+		{"linger", "return 5", "linger(); return 5", "", refs("a/TestLinger")},
 		// TestBumpB fails only after TestBumpA has run in the same process.
 		{"company", "bumps++", "bumps += 2", "", refs("a/TestBumpA", "a/TestBumpB")},
 		{"panics", "a / b", "a / (b - b)", "", refs(
@@ -128,21 +142,23 @@ var mainScenario = newScenario(func(ctx context.Context) (*mainRun, error) {
 	var first []runner.Job
 	for _, s := range specs {
 		switch s.name {
-		case "naps 3", "interrupt", "late":
+		case "naps 3", "interrupt", "late", "linger":
 		default:
 			first = append(first, r.jobs[s.name])
 		}
 	}
 	first = append(first, r.jobs["head"], r.jobs["tail"])
-	second := []runner.Job{r.jobs["naps 3"]}
+	second := []runner.Job{r.jobs["naps 3"], r.jobs["linger"]}
 	interrupt, late := r.jobs["interrupt"], r.jobs["late"]
 
 	if err := runInto(ctx, r.base, first, r.jobs, r.rows); err != nil {
 		return nil, err
 	}
+	start := time.Now()
 	if err := runInto(ctx, r.base, second, r.jobs, r.again); err != nil {
 		return nil, err
 	}
+	r.second = time.Since(start)
 
 	// The interrupted Run stops once the mutant's test has started.
 	ictx, interrupted := context.WithCancel(ctx)
@@ -222,6 +238,7 @@ type proveRun struct {
 	rerun   error     // the mutant's test takes away its binary's execute permission and times out
 	spoiled model.Row // a batch's clean run took away the clean binary's execute permission
 	unclean error     // a later batch needs the clean binary
+	shrunk  error     // the mutant's file got shorter after the mutant was made
 }
 
 // aloneScenario proves a suite in which TestDepends passes in the whole run and fails alone, with two
@@ -299,13 +316,127 @@ var batchScenario = newScenario(func(ctx context.Context) (*proveRun, error) {
 	_, r.rerun = run("", "return 1", "os.Chmod(os.Args[0], 0o644); time.Sleep(time.Minute); return 1", "batchy/TestSlowSpoil")
 
 	orig, repl = tag("spoil1")
-	r.spoiled, err = run("", orig, repl, "batchy/TestSpoil")
+	r.spoiled, err = run("", orig, repl, "batchy/TestSpoil", "batchy/TestZ")
 	if err != nil {
 		return nil, err
 	}
 	orig, repl = tag("spoil2")
-	_, r.unclean = run("", orig, repl, "batchy/TestSpoil", "batchy/TestZ")
+	_, r.unclean = run("", orig, repl, "batchy/TestSpoil", "batchy/TestSlowSpoil")
+
+	// The mutant fits words.go as it was. Then the file loses its last bytes, as it would if someone
+	// edited it during the run.
+	words, err := os.ReadFile(filepath.Join(root, wordsGo))
+	if err != nil {
+		return nil, err
+	}
+	tail := strings.Index(string(words), "{ return strings.ToUpper(s) }")
+	m := splice(wordsGo, words, tail, len(words), "{ return strings.Repeat(s, 0) }\n", "")
+	if err := os.WriteFile(filepath.Join(root, wordsGo), words[:tail], 0o644); err != nil {
+		return nil, err
+	}
+	_, r.shrunk = b.Run(ctx, []runner.Job{{Mutant: m, Tests: refs("batchy/TestZ")}})
 
 	r.log, err = readLog(root)
 	return r, err
+})
+
+// A cacheRun is what the cache scenario recorded. It proves a suite and runs one mutant twice: first
+// with no build cache handed down, then handed the cache the first run built its mutant in.
+type cacheRun struct {
+	own, handed string  // each run's work directory
+	ownLog      []entry // what the first run's tests wrote
+	handedLog   []entry // what the second run's tests wrote
+}
+
+var cacheScenario = newScenario(func(ctx context.Context) (*cacheRun, error) {
+	root, err := copyFixture("fx")
+	if err != nil {
+		return nil, err
+	}
+	prev, had := os.LookupEnv("FLINCH_GOCACHE")
+	defer func() {
+		if had {
+			os.Setenv("FLINCH_GOCACHE", prev)
+		} else {
+			os.Unsetenv("FLINCH_GOCACHE")
+		}
+	}()
+	run := func(work string) error {
+		o := runner.Options{Root: root, Jobs: 2, Work: work}
+		b, err := runner.Prove(ctx, o, []runner.Suite{suite("batchy", "TestZ")}, nil)
+		if err != nil {
+			return err
+		}
+		m, err := mutant(root, calcGo, `return "clean"`, `return "cached"`, "")
+		if err != nil {
+			return err
+		}
+		_, err = b.Run(ctx, []runner.Job{{Mutant: m, Tests: refs("batchy/TestZ")}})
+		return err
+	}
+	r := &cacheRun{own: filepath.Join(filepath.Dir(root), "own"), handed: filepath.Join(filepath.Dir(root), "handed")}
+	os.Unsetenv("FLINCH_GOCACHE")
+	if err := run(r.own); err != nil {
+		return nil, err
+	}
+	if r.ownLog, err = readLog(root); err != nil {
+		return nil, err
+	}
+	os.Setenv("FLINCH_GOCACHE", filepath.Join(r.own, "gocache"))
+	if err := run(r.handed); err != nil {
+		return nil, err
+	}
+	log, err := readLog(root)
+	if err != nil {
+		return nil, err
+	}
+	r.handedLog = log[len(r.ownLog):]
+	return r, nil
+})
+
+// An e2eRun is what one whole flinch run over the e2e module, through cli.Main, recorded. The run
+// gets a temp directory of its own.
+type e2eRun struct {
+	code        int
+	out, errOut string
+	tmp         string   // the temp directory the run was given
+	left        []string // what was in it after the run
+}
+
+// e2eScenario runs flinch over the e2e module, whose TestVictim fails when its suite runs whole and
+// whose TestLeaky leaves a file in the temp directory. cli.Main reads the working directory and the
+// environment, so the scenario changes both, and only for as long as the run takes.
+var e2eScenario = newScenario(func(ctx context.Context) (*e2eRun, error) {
+	root, err := copyFixture("e2e")
+	if err != nil {
+		return nil, err
+	}
+	r := &e2eRun{tmp: filepath.Join(filepath.Dir(root), "tmp")}
+	if err := os.Mkdir(r.tmp, 0o755); err != nil {
+		return nil, err
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	prev := os.Getenv("TMPDIR")
+	if err := os.Chdir(root); err != nil {
+		return nil, err
+	}
+	os.Setenv("TMPDIR", r.tmp)
+	var out, errOut strings.Builder
+	r.code = cli.Main([]string{"--jobs", "2"}, strings.NewReader(""), &out, &errOut)
+	os.Setenv("TMPDIR", prev)
+	if err := os.Chdir(wd); err != nil {
+		return nil, err
+	}
+	r.out, r.errOut = out.String(), errOut.String()
+	entries, err := os.ReadDir(r.tmp)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		r.left = append(r.left, e.Name())
+	}
+	return r, nil
 })

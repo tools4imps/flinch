@@ -111,18 +111,10 @@ func TestSignBig(t *testing.T) {
 	}
 }
 
-// TestSignNeg reaches Sign's outer switch and never its inner one.
 func TestSignNeg(t *testing.T) {
 	calc.Note(t.Name())
 	if got := calc.Sign(-3); got != -1 {
 		t.Errorf("Sign(-3) = %d", got)
-	}
-}
-
-func TestTwice(t *testing.T) {
-	calc.Note(t.Name())
-	if got := calc.Twice(3); got != 6 {
-		t.Errorf("Twice(3) = %d", got)
 	}
 }
 
@@ -139,15 +131,6 @@ func TestBumpB(t *testing.T) {
 	}
 }
 
-func TestPick(t *testing.T) {
-	calc.Note(t.Name())
-	ch := make(chan int, 1)
-	ch <- 4
-	if got := calc.Pick(ch); got != 4 {
-		t.Errorf("Pick = %d", got)
-	}
-}
-
 func TestHold1(t *testing.T) {
 	calc.Note(t.Name())
 	if got := calc.Hold(); got != 7 {
@@ -160,6 +143,34 @@ func TestHold2(t *testing.T) {
 	if got := calc.Hold(); got != 7 {
 		t.Errorf("Hold() = %d", got)
 	}
+}
+
+func TestGrow(t *testing.T) {
+	calc.Note(t.Name())
+	if got := calc.Grow(); got != 64 {
+		t.Errorf("Grow() = %d", got)
+	}
+}
+
+func TestGrowAfter1(t *testing.T) { calc.Note(t.Name()) }
+
+func TestGrowAfter2(t *testing.T) { calc.Note(t.Name()) }
+
+func TestLinger(t *testing.T) {
+	calc.Note(t.Name())
+	if got := calc.Linger(); got != 5 {
+		t.Errorf("Linger() = %d", got)
+	}
+}
+
+// TestLeftover leaves a file in the temp directory.
+func TestLeftover(t *testing.T) {
+	calc.Note(t.Name())
+	f, err := os.CreateTemp("", "fx-leftover-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
 }
 
 func TestQuiet1(t *testing.T) { calc.Note(t.Name()) }

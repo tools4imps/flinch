@@ -48,9 +48,6 @@ func TestMain(m *testing.M) {
 		os.Exit(2)
 	}
 	tmp = dir
-	// Everything this process and its children make in a temp directory lands in tmp, so sweep
-	// finds it even when the process dies before it can clean up.
-	os.Setenv("TMPDIR", tmp)
 	// Every fixture copy lives at a new path. Building with -trimpath keeps the path out of the
 	// build cache's keys, so each process reuses what earlier ones compiled.
 	os.Setenv("GOFLAGS", strings.TrimSpace(os.Getenv("GOFLAGS")+" -trimpath"))
@@ -71,7 +68,8 @@ func TestMain(m *testing.M) {
 }
 
 // sweep removes what processes that died before their TestMain could clean up left behind. A
-// mutant that crashes or hangs the runner kills the process, so a mutation run leaves many.
+// mutant that crashes or hangs the runner kills the process, so a mutation run leaves many, and
+// they would fill the run's temp directory long before the run ends and removes it.
 func sweep() {
 	old, _ := filepath.Glob(filepath.Join(os.TempDir(), "flinch-run-contract-*-*"))
 	for _, d := range old {
@@ -265,20 +263,6 @@ func sameRefs(got, want []model.TestRef) bool {
 	return reflect.DeepEqual(names(got), names(want))
 }
 
-// subset reports whether every test in a is in b.
-func subset(a, b []model.TestRef) bool {
-	in := map[string]bool{}
-	for _, n := range names(b) {
-		in[n] = true
-	}
-	for _, n := range names(a) {
-		if !in[n] {
-			return false
-		}
-	}
-	return true
-}
-
 func names(rs []model.TestRef) []string {
 	out := []string{}
 	for _, r := range rs {
@@ -311,6 +295,8 @@ type entry struct {
 	timeout string
 	tag     string
 	pid     int
+	// The process's TMPDIR, TMP and TEMP, and the build cache flinch hands to nested runs.
+	tmpdir, tmp, temp, cache string
 }
 
 // lone reports whether the entry came from a lone run: one test, with the default ten minutes.
@@ -331,7 +317,7 @@ func readLog(root string) ([]entry, error) {
 	var out []entry
 	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
 		f := strings.Fields(line)
-		if len(f) != 5 {
+		if len(f) < 5 {
 			return nil, fmt.Errorf("unreadable log line %q", line)
 		}
 		e := entry{event: f[0]}
@@ -349,6 +335,14 @@ func readLog(root string) ([]entry, error) {
 				e.tag = v
 			case "pid":
 				e.pid, _ = strconv.Atoi(v)
+			case "tmpdir":
+				e.tmpdir = v
+			case "tmp":
+				e.tmp = v
+			case "temp":
+				e.temp = v
+			case "cache":
+				e.cache = v
 			}
 		}
 		out = append(out, e)

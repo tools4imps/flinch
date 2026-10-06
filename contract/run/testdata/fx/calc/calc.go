@@ -5,6 +5,7 @@ package calc
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -58,8 +59,7 @@ func Trim(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// Sign is called by TestSign, TestSignBig and TestSignNeg. Coverage puts no block over its case
-// expressions.
+// Sign is called by TestSign, TestSignBig and TestSignNeg.
 func Sign(x int) int {
 	switch {
 	case x < 0:
@@ -76,14 +76,6 @@ func Sign(x int) int {
 	return 0
 }
 
-// Twice is called by TestTwice. Coverage puts no block over the condition after its function literal.
-func Twice(x int) int {
-	if y := func() int { return 2 * x }(); y > 9 {
-		return 9
-	}
-	return 2 * x
-}
-
 var bumps int
 
 // Bump counts its calls in the process. TestBumpA and TestBumpB call it.
@@ -92,22 +84,19 @@ func Bump() int {
 	return bumps
 }
 
-// Pick is called by TestPick.
-func Pick(ch chan int) int {
-	select {
-	case v := <-ch:
-		return v
-	default:
-		return -1
-	}
-}
-
 // Hold is called by TestHold1 and TestHold2.
 func Hold() int { return 7 }
 
+// Grow is called by TestGrow.
+func Grow() int { return 64 }
+
+// Linger is called by TestLinger.
+func Linger() int { return 5 }
+
 // Note appends a line to fx.log beside the module root, which the Contract tests read. The line names
-// the event, the tests the process was asked to run, its time budget, the tag and the process id. It
-// reads the flags from os.Args, so it works in an init function too, before flags are parsed.
+// the event, the tests the process was asked to run, its time budget, the tag, the process id, the
+// temp directory variables and the build cache flinch hands to nested runs. It reads the flags from
+// os.Args, so it works in an init function too, before flags are parsed.
 func Note(event string) {
 	run, timeout := "", ""
 	for _, a := range os.Args[1:] {
@@ -123,7 +112,8 @@ func Note(event string) {
 		panic(err)
 	}
 	defer f.Close()
-	fmt.Fprintf(f, "%s run=%s timeout=%s tag=%s pid=%d\n", event, run, timeout, Tag(), os.Getpid())
+	fmt.Fprintf(f, "%s run=%s timeout=%s tag=%s pid=%d tmpdir=%s tmp=%s temp=%s cache=%s\n", event, run, timeout, Tag(), os.Getpid(),
+		os.Getenv("TMPDIR"), os.Getenv("TMP"), os.Getenv("TEMP"), os.Getenv("FLINCH_GOCACHE"))
 }
 
 // freeze stops the process the first time it runs with a marker in a copy of the fixture, so Go's own
@@ -134,6 +124,28 @@ func freeze(marker string) {
 	}
 	os.WriteFile("../../../"+marker, nil, 0o644)
 	syscall.Kill(os.Getpid(), syscall.SIGSTOP)
+}
+
+// hoard holds ever more memory, 1 MB every 10ms, touching each page so it counts. No test calls it;
+// a mutant does.
+func hoard() {
+	var kept [][]byte
+	for {
+		b := make([]byte, 1<<20)
+		for i := range b {
+			b[i] = 1
+		}
+		kept = append(kept, b)
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// linger starts a process that outlives the test and keeps its output pipe open. No test calls it; a
+// mutant does.
+func linger() {
+	cmd := exec.Command("sleep", "100")
+	cmd.Stdout = os.Stdout
+	cmd.Start()
 }
 
 // pause sleeps the first time it runs with a marker in a copy of the fixture and leaves the marker

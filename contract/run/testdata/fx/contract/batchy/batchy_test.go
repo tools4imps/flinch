@@ -3,6 +3,7 @@ package batchy_test
 import (
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"example.com/fx/calc"
@@ -22,11 +23,11 @@ func TestZ(t *testing.T) {
 	dirty = false
 }
 
-// TestSpoil passes. When it runs with a time budget, as a batch's clean run does, it takes away its
-// own binary's permission to execute, so no process can start from that binary again.
+// TestSpoil passes. When its process was asked to run more than one test, as a batch's runs are, it
+// takes away its own binary's permission to execute, so no process can start from that binary again.
 func TestSpoil(t *testing.T) {
 	calc.Note(t.Name())
-	if !slices.Contains(os.Args, "-test.timeout=10m0s") {
+	if slices.ContainsFunc(os.Args, func(a string) bool { return strings.HasPrefix(a, "-test.run=") && strings.Contains(a, "|") }) {
 		os.Chmod(os.Args[0], 0o644)
 	}
 }

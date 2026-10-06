@@ -1,6 +1,7 @@
 package calc_test
 
 import (
+	"os"
 	"testing"
 
 	"example.com/e2e/calc"
@@ -11,6 +12,10 @@ var leaked bool
 // Contract: calc/A1
 func TestLeaky(t *testing.T) {
 	leaked = true
+	// It also leaves a file in the temp directory.
+	if f, err := os.CreateTemp("", "e2e-leftover-"); err == nil {
+		f.Close()
+	}
 	if calc.Add(1, 1) != 2 {
 		t.Error("Add(1, 1) != 2")
 	}
