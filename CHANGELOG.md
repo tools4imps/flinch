@@ -9,4 +9,5 @@ First release. flinch fails a pull request when code the Contract covers can bre
 - Kills are credited to obligations. The report names unheld mutants, hollow obligations, blind tests, obligations held only by crashes, and mutants held only from outside their primitive.
 - `equivalent` and `unpromised` declarations in `mutants.md`, checked on every run.
 - `--since` for pull requests, `--only`, `--operators`, `--tags`, `--dry-run`, and text and JSON reports.
+- A memory guard: a test process holding more than `--memory-limit` (2048 MB by default) is stopped and counts as a crash, so a mutant that allocates without end can't take the machine down. Tests run with their temp directory inside flinch's own.
 - flinch ships with its own Contract and runs on itself in CI.
