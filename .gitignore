@@ -1,0 +1,6 @@
+# The built binary and release artefacts
+/flinch
+/dist/
+
+# Session notes
+/docs/handoffs/
