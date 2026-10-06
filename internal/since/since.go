@@ -8,8 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +23,6 @@ import (
 type Changes struct {
 	Base  string            // the merge base commit
 	lines map[string][]span // new-side changed lines, by module-relative path
-	whole map[string]bool   // files that are new as a whole: untracked ones
 	paths map[string]bool   // every changed path, old and new sides of a rename, deletions included
 }
 
@@ -28,7 +30,8 @@ type Changes struct {
 type span struct{ first, last int }
 
 // Changed finds the merge base of ref and HEAD and diffs the working tree against it. Untracked files
-// that git doesn't ignore count as wholly new, because the Go toolchain builds them all the same.
+// that git doesn't ignore count as new, or as the new side of a rename, because the Go toolchain
+// builds them all the same.
 // Paths come back relative to root, which may sit below the top of the repository; changes outside
 // root are left out.
 func Changed(ctx context.Context, root, ref string) (*Changes, error) {
@@ -52,11 +55,51 @@ func Changed(ctx context.Context, root, ref string) (*Changes, error) {
 	c := &Changes{
 		Base:  base,
 		lines: map[string][]span{},
-		whole: map[string]bool{},
 		paths: map[string]bool{},
 	}
 
-	out, err = git(ctx, root, diffArgs(base, "--name-status", "-z")...)
+	// Untracked files that git doesn't ignore count, because the Go toolchain builds them all the
+	// same. They go into a copy of the index as intent-to-add entries, so the diffs below see each
+	// one as a new file and can pair it with a deleted file as a rename, whether or not the user
+	// staged the move. The repository's own index is never written.
+	work, err := os.MkdirTemp("", "flinch-since-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(work)
+	index, err := copyIndex(ctx, root, work)
+	if err != nil {
+		return nil, err
+	}
+	env := []string{"GIT_INDEX_FILE=" + index}
+
+	// ls-files reports paths relative to the directory it runs in, and only the ones below it, so
+	// these need no prefix stripped. The global excludes file is pinned to nothing, because it's
+	// the one ignore list that lives on the machine and not in the repository.
+	out, err = gitWith(ctx, root, env, nil, "-c", "core.excludesFile="+os.DevNull, "-c", "core.quotePath=false",
+		"ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, fmt.Errorf("listing untracked files: %w", err)
+	}
+	var untracked []string
+	for _, name := range strings.Split(string(out), "\x00") {
+		// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
+		if strings.HasSuffix(name, "/") {
+			// A nested repository, which git lists whole and can't add, so only its path counts.
+			c.paths[name] = true
+		} else if name != "" {
+			untracked = append(untracked, name)
+		}
+	}
+	if len(untracked) > 0 {
+		_, err = gitWith(ctx, root, env, strings.NewReader(strings.Join(untracked, "\x00")),
+			"--literal-pathspecs", "add", "--force", "--intent-to-add", "--pathspec-from-file=-", "--pathspec-file-nul")
+		if err != nil {
+			return nil, fmt.Errorf("noting untracked files in a copy of the index: %w", err)
+		}
+	}
+
+	out, err = gitWith(ctx, root, env, nil, diffArgs(base, "--name-status", "-z")...)
 	if err != nil {
 		return nil, fmt.Errorf("listing the files changed since %s: %w", base, err)
 	}
@@ -70,7 +113,7 @@ func Changed(ctx context.Context, root, ref string) (*Changes, error) {
 		}
 	}
 
-	out, err = git(ctx, root, diffArgs(base, "--patch")...)
+	out, err = gitWith(ctx, root, env, nil, diffArgs(base, "--patch")...)
 	if err != nil {
 		return nil, fmt.Errorf("diffing the working tree against %s: %w", base, err)
 	}
@@ -83,32 +126,41 @@ func Changed(ctx context.Context, root, ref string) (*Changes, error) {
 			c.lines[p] = append(c.lines[p], spans...)
 		}
 	}
-
-	// ls-files reports paths relative to the directory it runs in, and only the ones below it, so
-	// these need no prefix stripped. The global excludes file is pinned to nothing, because it's
-	// the one ignore list that lives on the machine and not in the repository.
-	out, err = git(ctx, root, "-c", "core.excludesFile="+os.DevNull, "-c", "core.quotePath=false",
-		"ls-files", "--others", "--exclude-standard", "-z")
-	if err != nil {
-		return nil, fmt.Errorf("listing untracked files: %w", err)
-	}
-	for _, name := range strings.Split(string(out), "\x00") {
-		if name != "" {
-			c.whole[name] = true
-			c.paths[name] = true
-		}
-	}
 	return c, nil
 }
 
+// copyIndex copies the repository's index into dir and returns the copy's path. With no index to
+// copy, the path names a file that doesn't exist yet, which git reads as an empty index.
+func copyIndex(ctx context.Context, root, dir string) (string, error) {
+	out, err := git(ctx, root, "rev-parse", "--git-path", "index")
+	if err != nil {
+		return "", fmt.Errorf("finding the git index: %w", err)
+	}
+	src := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(src) {
+		src = filepath.Join(root, src)
+	}
+	dst := filepath.Join(dir, "index")
+	data, err := os.ReadFile(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return dst, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading the git index: %w", err)
+	}
+	return dst, os.WriteFile(dst, data, 0o600)
+}
+
 // diffArgs builds a diff of the working tree against base with every option that changes hunks or
-// paths set on the command line, where it beats any config file.
+// paths set on the command line, where it beats any config file. --text reads every file as text,
+// so no attributes file, the machine's own included, can turn a source file's hunks into a line
+// saying the binary files differ.
 func diffArgs(base string, format ...string) []string {
 	args := []string{
 		"-c", "core.quotePath=false",
 		"-c", "diff.relative=false",
 		"diff",
-		"--no-color", "--no-ext-diff", "--no-textconv",
+		"--no-color", "--no-ext-diff", "--no-textconv", "--text",
 		"--unified=0", "--inter-hunk-context=0",
 		"--find-renames=50%", "-l0",
 		"--diff-algorithm=myers", "--indent-heuristic",
@@ -121,9 +173,16 @@ func diffArgs(base string, format ...string) []string {
 
 // git runs one git command in dir with the environment variables that reach into diff output removed.
 func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return gitWith(ctx, dir, nil, nil, args...)
+}
+
+// gitWith is git with env added to the environment and stdin, when it isn't nil, as the command's
+// input.
+func gitWith(ctx context.Context, dir string, env []string, stdin io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-pager"}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = cleanEnv(os.Environ())
+	cmd.Env = append(cleanEnv(os.Environ()), env...)
+	cmd.Stdin = stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -205,16 +264,16 @@ func parsePatch(out []byte) (map[string][]span, error) {
 	// "diff --git" and the file's first hunk.
 	header := false
 	for _, line := range strings.Split(string(out), "\n") {
-		switch {
-		case strings.HasPrefix(line, "diff --git "):
+		// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
+		if strings.HasPrefix(line, "diff --git ") {
 			file, header = "", true
-		case header && strings.HasPrefix(line, "+++ "):
+		} else if header && strings.HasPrefix(line, "+++ ") {
 			name, err := headerPath(line[len("+++ "):])
 			if err != nil {
 				return nil, err
 			}
 			file = name
-		case strings.HasPrefix(line, "@@ "):
+		} else if strings.HasPrefix(line, "@@ ") {
 			header = false
 			if file == "" {
 				continue
@@ -281,11 +340,9 @@ func hunkSpan(line string) (span, bool, error) {
 	return span{}, false, fmt.Errorf("git's diff has a hunk header without a new side: %s", line)
 }
 
-// Touches reports whether line in file changed, or whether file is new and untracked.
+// Touches reports whether line in file changed. Every line of a new file, untracked ones included,
+// counts as changed.
 func (c *Changes) Touches(file string, line int) bool {
-	if c.whole[file] {
-		return true
-	}
 	for _, s := range c.lines[file] {
 		if s.first <= line && line <= s.last {
 			return true

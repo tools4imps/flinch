@@ -115,14 +115,14 @@ func (t *text) soleHolds(os []matrix.Obligation) {
 }
 
 func (t *text) scope() string {
-	switch {
-	case t.r.Since != "":
+	// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
+	if t.r.Since != "" {
 		return "scoped run, --since " + t.r.Since
-	case t.r.Scoped:
-		return "scoped run"
-	default:
-		return "full run"
 	}
+	if t.r.Scoped {
+		return "scoped run"
+	}
+	return "full run"
 }
 
 func (t *text) build() string {
@@ -278,14 +278,14 @@ func (t *text) hollow() {
 				reached++
 			}
 		}
-		switch {
-		case len(o.Tests) == 0:
+		// An if chain, not a switch: flinch can't see a test reach a switch's case expressions.
+		if len(o.Tests) == 0 {
 			t.line("  %s  no Contract test names it", o.ID)
-		case reached == 0 && len(o.Tests) == 1:
+		} else if reached == 0 && len(o.Tests) == 1 {
 			t.line("  %s  its test reaches no mutant", o.ID)
-		case reached == 0:
+		} else if reached == 0 {
 			t.line("  %s  its %d tests reach no mutant", o.ID, len(o.Tests))
-		default:
+		} else {
 			t.line("  %s  %s ran against %s and killed none", o.ID, plural(len(o.Tests), "test", "tests"), plural(reached, "mutant", "mutants"))
 		}
 		t.line("    to clear: rewrite its tests to check what its code does, or drop an obligation that promises nothing")
