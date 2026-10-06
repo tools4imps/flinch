@@ -1,0 +1,78 @@
+# 77 mutants, 1 unviable
+fix.go:4:24 erase: ..Root: { ... } -> { return *new(bool) } [erase]
+fix.go:5:11 equality: ..Root: a == 1 -> a != 1
+ops/a.go:13:16 arithmetic: ops.limit: 10 * 2 -> 10 / 2 [linked]
+ops/a.go:19:44 boundary: ops.positive.func1: x > 0 -> x >= 0
+ops/a.go:21:14 erase: ops.init.0: { ... } -> { return } [erase] [linked]
+ops/a.go:22:7 step: ops.init.0: limit++ -> limit-- [linked]
+ops/a.go:25:27 erase: ops.Arith: { ... } -> { return *new(int) } [erase]
+ops/a.go:26:11 arithmetic: ops.Arith: a + b -> a - b
+ops/a.go:27:12 arithmetic: ops.Arith: a - b -> a + b
+ops/a.go:28:12 arithmetic: ops.Arith: a * b -> a / b
+ops/a.go:29:12 arithmetic: ops.Arith: a / b -> a * b
+ops/a.go:30:11 arithmetic: ops.Arith: a % b -> a * b
+ops/a.go:31:13 arithmetic: ops.Arith: sum + diff -> sum - diff
+ops/a.go:31:20 arithmetic: ops.Arith: sum + diff + prod -> sum + diff - prod
+ops/a.go:31:27 arithmetic: ops.Arith: sum + diff + prod + quot -> sum + diff + prod - quot
+ops/a.go:31:34 arithmetic: ops.Arith: sum + diff + prod + quot + rem -> sum + diff + prod + quot - rem
+ops/a.go:34:34 erase: ops.Concat: { ... } -> { return *new(string) } [erase]
+ops/a.go:40:30 erase: ops.Compare: { ... } -> { return *new(bool) } [erase]
+ops/a.go:41:7 boundary: ops.Compare: a < b -> a <= b
+ops/a.go:41:11 logical: ops.Compare: a < b || a <= 0 -> a < b && a <= 0
+ops/a.go:41:16 boundary: ops.Compare: a <= 0 -> a < 0
+ops/a.go:42:12 equality: ops.Compare: a == b -> a != b
+ops/a.go:42:17 logical: ops.Compare: a == b && a != 0 -> a == b || a != 0
+ops/a.go:42:22 equality: ops.Compare: a != 0 -> a == 0
+ops/a.go:44:9 negation: ops.Compare: !(a > b) -> (a > b)
+ops/a.go:44:13 boundary: ops.Compare: a > b -> a >= b
+ops/a.go:44:18 logical: ops.Compare: !(a > b) && a >= 1 -> !(a > b) || a >= 1
+ops/a.go:44:23 boundary: ops.Compare: a >= 1 -> a > 1
+ops/a.go:47:28 erase: ops.Flags: { ... } -> { return *new(bool), *new(bool) } [erase]
+ops/a.go:48:9 bool: ops.Flags: true -> false
+ops/a.go:48:15 bool: ops.Flags: false -> true
+ops/a.go:51:31 erase: ops.Step: { ... } -> { return } [erase]
+ops/a.go:52:16 boundary: ops.Step: i < n -> i <= n
+ops/a.go:52:22 step: ops.Step: i++ -> i--
+ops/a.go:53:9 step: ops.Step: total += i -> total -= i
+ops/a.go:55:3 step: ops.Step: n-- -> n++
+ops/a.go:56:8 step: ops.Step: total -= n -> total += n
+ops/a.go:62:34 erase: ops.Errors: { ... } -> { return *new(int), *new(error) } [erase]
+ops/a.go:63:7 boundary: ops.Errors: n < 0 -> n <= 0
+ops/a.go:64:13 drop-error: ops.Errors: return 0, errBad -> return 0, nil
+ops/a.go:66:7 equality: ops.Errors: n == 0 -> n != 0
+ops/a.go:67:13 drop-error: ops.Errors: return 0, fmt.Errorf("zero %d", n) -> return 0, nil
+ops/a.go:75:31 erase: ops.myErr.Error: { ... } -> { return *new(string) } [erase]
+ops/a.go:77:25 erase: ops.Concrete: { ... } -> { return *new(*myErr) } [erase]
+ops/a.go:79:57 erase: ops.Calls: { ... } -> { return } [erase]
+ops/a.go:84:2 drop-call: ops.Calls: fmt.Fprintln(w, "e") -> (removed)
+ops/a.go:85:2 drop-call: ops.Calls: fmt.Fprintf(w, "%d", 1) -> (removed)
+ops/a.go:89:27 erase: ops.Strand: { ... } -> { return } [erase]
+ops/a.go:91:2 drop-call: ops.Strand: fmt.Fprint(w, x) -> (removed)
+ops/a.go:95:25 erase: ops.Wrap: { ... } -> { return *new(error) } [erase]
+ops/a.go:97:9 drop-error: ops.Wrap: return errors.New( msg) -> return nil
+ops/a.go:101:36 erase: ops.Max: { ... } -> { return *new(T) } [erase]
+ops/a.go:102:7 boundary: ops.Max: a > b -> a >= b
+ops/a.go:110:31 erase: ops.Sum: { ... } -> { return *new(T) } [erase]
+ops/a.go:113:5 step: ops.Sum: s += x -> s -= x
+ops/a.go:118:40 erase: ops.Join: { ... } -> { return *new(T) } [erase]
+ops/a.go:124:30 erase: ops.List.Len: { ... } -> { return *new(int) } [erase]
+ops/a.go:126:28 erase: ops.Counter: { ... } -> { return *new(func() int) } [erase]
+ops/a.go:129:4 step: ops.Counter.func1: n++ -> n--
+ops/a.go:134:25 erase: ops.Twice: { ... } -> { return *new(bool) } [erase]
+ops/a.go:135:9 boundary: ops.Twice: x > 0 -> x >= 0
+ops/a.go:136:9 boundary: ops.Twice: x > 0 -> x >= 0 #2
+ops/a.go:137:11 logical: ops.Twice: a && b -> a || b
+ops/a.go:142:23 erase: ops.Odd: { ... } -> { return *new(bool) } [erase]
+ops/a.go:149:4 erase: ops.Pair: { ... } -> { return *new(struct { a int; b string; }) } [erase]
+ops/b.go:3:14 erase: ops.init.1: { ... } -> { return } [erase] [linked]
+ops/b.go:4:11 boundary: ops.init.1: limit > 5 -> limit >= 5 [linked]
+ops/d.go:6:22 erase: ops.Quit: { ... } -> { return } [erase]
+ops/d.go:7:2 drop-call: ops.Quit: os.Exit(code) -> (removed)
+ops/d.go:12:25 erase: ops.Must: { ... } -> { return *new(int) } [erase]
+ops/e.go:6:26 erase: ops.Check: { ... } -> { return *new(error) } [erase]
+ops/e.go:7:7 boundary: ops.Check: n > 9 -> n >= 9
+ops/e.go:8:10 drop-error: ops.Check: return errors.New("too big") -> return nil
+ops/zero.go:9:27 bool: ops.Off: false -> true
+ops/zero.go:20:19 erase: ops.Boxed: { ... } -> { return *new(any) } [erase]
+ops/zero.go:22:17 erase: ops.One: { ... } -> { return *new(int) } [erase]
+ops/zero.go:24:22 erase: ops.Pointer: { ... } -> { return *new(*int) } [erase]

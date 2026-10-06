@@ -1,0 +1,3 @@
+package outside
+
+func O() {}

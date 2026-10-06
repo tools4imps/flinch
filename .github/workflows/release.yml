@@ -1,0 +1,71 @@
+name: Release
+
+# Publishes flinch when the version in internal/version/version.go has no GitHub release yet.
+#
+# Two ways to release. Bump version.go and land it on main, and the push trigger below publishes it.
+# Or run the workflow by hand. Either way a version that already has a release is skipped, so a
+# re-run, or a push that touched version.go without changing the number, does nothing. The tag is
+# cut here too. Nobody tags by hand.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "internal/version/version.go"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Is this version already released?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' internal/version/version.go)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "skip  v$version is already a GitHub release"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A release that cannot pass its own suite is not a release. CI already ran this on the
+      # commit; running it again here removes the "which commit did we actually build" question.
+      - name: Test suite
+        if: steps.check.outputs.publish == 'true'
+        run: go test -timeout 30m ./...
+
+      - name: Build the archives
+        if: steps.check.outputs.publish == 'true'
+        run: scripts/build-release.sh
+
+      # The binary for this runner has to answer with the version, or the archive is broken.
+      - name: The built binary runs
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          version=${{ steps.check.outputs.version }}
+          got=$("dist/flinch_${version}_linux_amd64/flinch" version)
+          if [ "$got" != "flinch $version" ]; then
+            echo "::error::the binary answered '$got', expected 'flinch $version'"
+            exit 1
+          fi
+
+      - name: GitHub release
+        if: steps.check.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.check.outputs.version }}"
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file CHANGELOG.md \
+            dist/*.tar.gz dist/*.zip dist/checksums.txt

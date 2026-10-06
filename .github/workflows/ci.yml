@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Go ${{ matrix.go }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # go.mod names the oldest Go flinch supports. "stable" is what releases are built with.
+        go: ["1.25", "stable"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test suite
+        run: go test -race -timeout 30m ./...
+
+  # flinch holds itself to its own Contract. The static check is quick and runs everywhere. Pull
+  # requests also mutate what they change; main is mutated in full.
+  self:
+    name: flinch on flinch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build
+        run: go build -o flinch ./cmd/flinch
+
+      - name: The Contract's own files
+        run: ./flinch contract
+
+      - name: Mutate the change
+        if: github.event_name == 'pull_request'
+        run: ./flinch --since "origin/${{ github.base_ref }}"
+
+      - name: Mutate everything
+        if: github.event_name == 'push'
+        run: ./flinch
