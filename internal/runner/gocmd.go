@@ -39,7 +39,7 @@ func (b *Baseline) goCmdEnv(ctx context.Context, env []string, args ...string) (
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = b.o.Root
 	if env != nil {
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = withEnv(cmd.Dir, env...)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -75,9 +75,32 @@ func (b *Baseline) build(ctx context.Context, dir, out string, extra ...string) 
 	return b.buildEnv(ctx, nil, dir, out, extra...)
 }
 
-// buildMutant compiles a test binary through an overlay.
+// mutantCacheVar names the build cache a run hands to the flinch runs its tests start.
+const mutantCacheVar = "FLINCH_GOCACHE"
+
+// mutantCache is the build cache for mutant builds. Every mutant compiles its package and the
+// packages that import it afresh, and in the user's cache those builds would pile up by the
+// gigabyte, so a run builds mutants in a cache of its own that goes when the run ends. A run started
+// by another run's tests shares the outer run's cache, so the standard library compiles once for the
+// whole tree of runs.
+func mutantCache(work string) string {
+	if dir := os.Getenv(mutantCacheVar); dir != "" {
+		return dir
+	}
+	return filepath.Join(work, "gocache")
+}
+
+// buildMutant compiles a test binary through an overlay, in the mutant build cache.
 func (b *Baseline) buildMutant(ctx context.Context, dir, out, overlay string) error {
-	return b.buildEnv(ctx, nil, dir, out, "-overlay="+overlay)
+	return b.buildEnv(ctx, []string{"GOCACHE=" + b.cache}, dir, out, "-overlay="+overlay)
+}
+
+// withEnv is the environment for a process started in dir with the given variables added. It sets
+// PWD to dir, as os/exec does only when a command keeps the parent's environment. A stale PWD makes
+// the go command spell its directory through symlinks resolved, and an overlay keyed by the path as
+// written then matches nothing and is quietly ignored.
+func withEnv(dir string, vars ...string) []string {
+	return append(os.Environ(), append([]string{"PWD=" + dir}, vars...)...)
 }
 
 func (b *Baseline) buildEnv(ctx context.Context, env []string, dir, out string, extra ...string) error {
@@ -174,7 +197,7 @@ func (b *Baseline) runTests(ctx context.Context, s *suite, bin string, tests []s
 	// lands inside the run's own work directory and goes when the run ends, even when flinch had to
 	// kill the test before it could clean up.
 	tmp := filepath.Join(b.o.Work, "tmp")
-	cmd.Env = append(os.Environ(), "TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp)
+	cmd.Env = withEnv(cmd.Dir, "TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp, mutantCacheVar+"="+b.cache)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
