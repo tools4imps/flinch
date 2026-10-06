@@ -281,9 +281,10 @@ var batchScenario = newScenario(func(ctx context.Context) (*proveRun, error) {
 
 	// Built for another operating system, the mutant's binary can't start. GOOS is the process's
 	// own environment, so it changes only between Runs.
+	// The fixture uses syscall functions Windows lacks, so the other system is macOS or Linux.
 	foreign := "linux"
 	if runtime.GOOS == "linux" {
-		foreign = "windows"
+		foreign = "darwin"
 	}
 	goos, had := os.LookupEnv("GOOS")
 	os.Setenv("GOOS", foreign)
