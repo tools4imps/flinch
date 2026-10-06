@@ -200,7 +200,9 @@ func (b *Baseline) checkBatch(ctx context.Context, s *suite, tests []string) err
 	if c.done {
 		return c.err
 	}
-	p, err := b.runTests(ctx, s, s.clean, tests, b.budget(s, tests, 1))
+	// The check is about which tests share a process, not about time, so it gets the limit the
+	// clean whole-suite run gets. A mutant's budget would fail a slow machine's clean code.
+	p, err := b.runTests(ctx, s, s.clean, tests, defaultTimeout)
 	if err != nil {
 		// A run that ctx stopped proves nothing, so a later Run checks the batch again.
 		return b.undecidedRun(err)

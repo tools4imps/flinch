@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/tools4imps/flinch/internal/engine"
 	"github.com/tools4imps/flinch/internal/report"
@@ -186,7 +187,8 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return contractText(out, st, rep)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// Either signal stops the run the same way, so its work directory goes with it.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ro := engine.RunOptions{
 		Options: base, Since: *sinceRef, Only: only, Operators: ops,
