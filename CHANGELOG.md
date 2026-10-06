@@ -10,4 +10,5 @@ First release. flinch fails a pull request when code the Contract covers can bre
 - `equivalent` and `unpromised` declarations in `mutants.md`, checked on every run.
 - `--since` for pull requests, `--only`, `--operators`, `--tags`, `--dry-run`, and text and JSON reports.
 - A memory guard: a test process holding more than `--memory-limit` (2048 MB by default) is stopped and counts as a crash, so a mutant that allocates without end can't take the machine down. Tests run with their temp directory inside flinch's own.
+- Mutants build in a cache of the run's own, never your Go build cache. flinch empties it between chunks of mutants once it passes 2 GB, so a long run can't fill the disk.
 - flinch ships with its own Contract and runs on itself in CI.
