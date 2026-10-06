@@ -77,6 +77,9 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		cmd, args = args[0], args[1:]
 	}
+	if (cmd == "version" || cmd == "operators") && len(args) > 0 {
+		return bad(stderr, fmt.Sprintf("flinch %s takes no flags or arguments, and got %q", cmd, args[0]))
+	}
 	switch cmd {
 	case "version":
 		fmt.Fprintf(stdout, "flinch %s\n", version.Version)
