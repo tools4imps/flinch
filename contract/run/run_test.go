@@ -652,6 +652,12 @@ func TestProcessOverTheMemoryLimitCrashes(t *testing.T) {
 			t.Errorf("%s never ran in a process of its own", test)
 		}
 	}
+	// The guard watches each of the many test processes the scenario runs, and stops watching when
+	// the process ends. A watch that went on would poll a process id the system may hand to another
+	// process.
+	if before, after := r.goroutines[0], r.goroutines[1]; after > before+20 {
+		t.Errorf("%d goroutines before the runs and %d after, so something still watches finished processes", before, after)
+	}
 }
 
 // Contract: run/R14

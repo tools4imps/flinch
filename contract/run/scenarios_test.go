@@ -44,6 +44,8 @@ type mainRun struct {
 	work          string // the runner's work directory
 	base          *runner.Baseline
 	second        time.Duration // how long the second Run took
+	// How many goroutines the process had before Prove and after the last Run.
+	goroutines [2]int
 	jobs          map[string]runner.Job
 	rows          map[string]model.Row // by job name
 	again         map[string]model.Row // the second Run, by job name
@@ -68,6 +70,7 @@ var mainScenario = newScenario(func(ctx context.Context) (*mainRun, error) {
 	if r.before, err = snapshot(root); err != nil {
 		return nil, err
 	}
+	r.goroutines[0] = runtime.NumGoroutine()
 	r.work = filepath.Join(filepath.Dir(root), "work")
 	o := runner.Options{
 		Root: root, Jobs: 4, Work: r.work, Progress: io.Discard, Tags: []string{"fxtag"},
@@ -176,6 +179,7 @@ var mainScenario = newScenario(func(ctx context.Context) (*mainRun, error) {
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()
 	_, r.canceled = r.base.Run(cctx, []runner.Job{late})
+	r.goroutines[1] = runtime.NumGoroutine()
 
 	if r.log, err = readLog(root); err != nil {
 		return nil, err
