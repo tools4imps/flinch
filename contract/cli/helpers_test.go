@@ -173,6 +173,7 @@ type reportMutant struct {
 	RanBy     []string `json:"ran_by"`
 	KilledBy  []struct {
 		Test string `json:"test"`
+		Kind string `json:"kind"`
 	} `json:"killed_by"`
 }
 

@@ -149,7 +149,7 @@ internal/gitdiff.Hunks: i >= 0 -> i > 0
 | drop-error | in a return, an expression of type `error` becomes `nil` |
 | drop-call | a call whose results are unused is removed; calls into `log` and `log/slog` are left alone |
 
-Mutants are compiled through `go test -overlay`, so your working tree is never touched.
+Mutants are compiled through `go test -overlay`, so your working tree is never touched. Some mutants make code allocate without end, so flinch stops any test process that holds more than `--memory-limit` and counts it as a crash. Tests run with their temp directory inside flinch's own, which goes when the run ends.
 
 ## Flags
 
@@ -159,8 +159,9 @@ Mutants are compiled through `go test -overlay`, so your working tree is never t
 | `--only PRIMITIVE` | mutate one primitive's covered code; repeatable |
 | `--operators LIST` | run only these operators |
 | `--tags LIST` | build tags for every go command flinch runs |
-| `--jobs N` | parallel workers, the CPU count by default |
+| `--jobs N` | parallel workers, half the CPUs and at most 8 by default |
 | `--timeout-coefficient N` | multiplies the clean run time in each time budget, 10 by default |
+| `--memory-limit MB` | stops a test process holding more than this, 2048 by default; 0 turns the guard off |
 | `--contract DIR` | where the Contract lives, `contract` by default |
 | `--format text\|json` | report format |
 | `--output FILE` | write the report to a file |

@@ -36,8 +36,9 @@ Flags for run:
   --since REF                mutate only the lines changed since the merge base with REF
   --only PRIMITIVE           mutate one primitive's covered code; repeatable
   --operators LIST           run only these operators
-  --jobs N                   parallel workers (default: the number of CPUs)
+  --jobs N                   parallel workers (default: half the CPUs, at most 8)
   --timeout-coefficient N    multiplies the clean run time in each time budget (default 10)
+  --memory-limit MB          stop a test process holding more than this; 0 for no limit (default 2048)
   --dry-run                  list the mutants a run would build, and build none
 
 Exit status: 0 when the Contract holds, 1 when it doesn't, 2 when flinch couldn't decide.
@@ -105,8 +106,9 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		format      = fs.String("format", "text", "")
 		output      = fs.String("output", "", "")
 		sinceRef    = fs.String("since", "", "")
-		jobs        = fs.Int("jobs", runtime.NumCPU(), "")
+		jobs        = fs.Int("jobs", defaultJobs(), "")
 		coefficient = fs.Float64("timeout-coefficient", 10, "")
+		memoryLimit = fs.Int64("memory-limit", 2048, "")
 		dryRun      = fs.Bool("dry-run", false, "")
 		showVersion = fs.Bool("version", false, "")
 		tags, only  listFlag
@@ -135,12 +137,14 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return bad(stderr, "--jobs must be at least 1")
 	case *coefficient <= 0:
 		return bad(stderr, "--timeout-coefficient must be more than 0")
+	case *memoryLimit < 0:
+		return bad(stderr, "--memory-limit must be 0 or more")
 	}
 	if cmd == "contract" {
 		var runOnly []string
 		fs.Visit(func(f *flag.Flag) {
 			switch f.Name {
-			case "since", "only", "operators", "jobs", "timeout-coefficient", "dry-run":
+			case "since", "only", "operators", "jobs", "timeout-coefficient", "memory-limit", "dry-run":
 				runOnly = append(runOnly, "--"+f.Name)
 			}
 		})
@@ -186,7 +190,7 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	defer stop()
 	ro := engine.RunOptions{
 		Options: base, Since: *sinceRef, Only: only, Operators: ops,
-		Jobs: *jobs, Coefficient: *coefficient, Progress: stderr,
+		Jobs: *jobs, Coefficient: *coefficient, MemoryLimit: *memoryLimit << 20, Progress: stderr,
 	}
 	if *dryRun {
 		plan, err := engine.Prepare(ctx, ro)
@@ -248,6 +252,12 @@ func contractText(out io.Writer, st *engine.Static, rep *report.Report) int {
 	}
 	fmt.Fprintf(out, "\nexit %d\n", rep.Exit)
 	return rep.Exit
+}
+
+// defaultJobs is half the machine's CPUs, at most 8. Each job builds a test binary and runs tests that
+// may themselves build and run code, so one job per CPU can starve the machine of memory.
+func defaultJobs() int {
+	return max(1, min(runtime.NumCPU()/2, 8))
 }
 
 // count writes n with a singular or plural noun.

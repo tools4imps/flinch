@@ -93,7 +93,7 @@ func (b *Baseline) job(ctx context.Context, j Job) (model.Row, error) {
 	}
 	for _, g := range groups {
 		g.bin = filepath.Join(dir, fmt.Sprintf("%d.test", g.s.n))
-		if err := b.build(ctx, g.s.Dir, g.bin, "-overlay="+overlay); err != nil {
+		if err := b.buildMutant(ctx, g.s.Dir, g.bin, overlay); err != nil {
 			var ge *goError
 			if !errors.As(err, &ge) {
 				return model.Row{}, b.undecidedRun(err)

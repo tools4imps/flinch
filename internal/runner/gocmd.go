@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -30,8 +31,16 @@ const defaultTimeout = 10 * time.Minute
 // goCmd runs the go command in the module root. It returns standard output, and on failure an error
 // that carries standard error.
 func (b *Baseline) goCmd(ctx context.Context, args ...string) ([]byte, error) {
+	return b.goCmdEnv(ctx, nil, args...)
+}
+
+// goCmdEnv is goCmd with extra environment variables.
+func (b *Baseline) goCmdEnv(ctx context.Context, env []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = b.o.Root
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -63,11 +72,20 @@ func (b *Baseline) tagArgs() []string {
 // build compiles the test binary for the package in dir. Vet is off because go test -c skips it
 // anyway, and saying so keeps a vet complaint about a mutant from ever passing for a build failure.
 func (b *Baseline) build(ctx context.Context, dir, out string, extra ...string) error {
+	return b.buildEnv(ctx, nil, dir, out, extra...)
+}
+
+// buildMutant compiles a test binary through an overlay.
+func (b *Baseline) buildMutant(ctx context.Context, dir, out, overlay string) error {
+	return b.buildEnv(ctx, nil, dir, out, "-overlay="+overlay)
+}
+
+func (b *Baseline) buildEnv(ctx context.Context, env []string, dir, out string, extra ...string) error {
 	args := []string{"test", "-c", "-vet=off"}
 	args = append(args, b.tagArgs()...)
 	args = append(args, extra...)
 	args = append(args, "-o", out, "./"+dir)
-	_, err := b.goCmd(ctx, args...)
+	_, err := b.goCmdEnv(ctx, env, args...)
 	if err == nil && !exists(out) {
 		// go test -c writes nothing for a package without test files and still succeeds.
 		return &goError{msg: "no test files in " + dir}
@@ -152,13 +170,23 @@ func (b *Baseline) runTests(ctx context.Context, s *suite, bin string, tests []s
 	defer cancel()
 	cmd := exec.CommandContext(gctx, bin, args...)
 	cmd.Dir = s.abs
+	// Whatever a test leaves in the temp directory, and whatever the processes it starts leave there,
+	// lands inside the run's own work directory and goes when the run ends, even when flinch had to
+	// kill the test before it could clean up.
+	tmp := filepath.Join(b.o.Work, "tmp")
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	// A test can start a process that keeps the output pipe open after the test binary exits. Waiting
 	// on it would stall the run, so flinch stops reading shortly after the binary ends.
 	cmd.WaitDelay = 2 * time.Second
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil {
+		stop := watchMemory(cmd.Process, b.o.MemoryLimit)
+		err = cmd.Wait()
+		stop()
+	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}

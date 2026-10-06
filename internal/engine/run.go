@@ -34,6 +34,7 @@ type RunOptions struct {
 	Operators   []string // empty for the defaults
 	Jobs        int
 	Coefficient float64
+	MemoryLimit int64 // bytes one test process may hold; zero for no limit
 	Progress    io.Writer
 }
 
@@ -259,7 +260,7 @@ func Run(ctx context.Context, o RunOptions) (*report.Report, error) {
 	}
 	ropts := runner.Options{
 		Root: st.Module.Root, Tags: o.Tags, Jobs: o.Jobs, Coefficient: o.Coefficient,
-		Progress: progress, Work: work,
+		MemoryLimit: o.MemoryLimit, Progress: progress, Work: work,
 	}
 
 	var coverpkg []string

@@ -28,6 +28,10 @@ type Options struct {
 	Coefficient float64 // default 10
 	Progress    io.Writer
 	Work        string // a temp directory the runner owns
+	// MemoryLimit is the most memory, in bytes, one test process may hold before flinch stops it.
+	// Some mutants make code allocate without end, and one such process can take the whole machine
+	// down with it. Zero turns the guard off.
+	MemoryLimit int64
 }
 
 // A Suite is one primitive's Contract tests, which build into one test binary.
@@ -94,7 +98,7 @@ func Prove(ctx context.Context, o Options, suites []Suite, coverpkg []string) (*
 		links:   map[string][]model.TestRef{},
 		batches: map[string]*batchCheck{},
 	}
-	for _, d := range []string{"clean", "cover", "m"} {
+	for _, d := range []string{"clean", "cover", "m", "tmp"} {
 		if err := os.MkdirAll(filepath.Join(o.Work, d), 0o755); err != nil {
 			return nil, err
 		}
