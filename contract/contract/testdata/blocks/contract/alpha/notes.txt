@@ -1,0 +1,5 @@
+Notes in a file that is no Markdown.
+
+```covers
+internal/t
+```

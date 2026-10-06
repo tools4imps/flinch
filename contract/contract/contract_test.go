@@ -84,10 +84,19 @@ func TestNoContractWhereFlinchLooksIsAnError(t *testing.T) {
 			t.Errorf("Load(%q): problems = %v, want one at %s", dir, ps, dir)
 		}
 	}
-	// A path through a file can't hold a Contract either. flinch may call that a Contract error or
-	// stop, but it can't carry on as if the Contract were empty.
-	if c, ps, err := contract.Load(root, "go.mod/contract"); err == nil && !reflect.DeepEqual(paths(ps), []string{"go.mod/contract"}) {
-		t.Errorf("Load(go.mod/contract) = %v, %v, want an error or a problem at go.mod/contract", c, ps)
+	// A path through a file isn't a directory either.
+	if _, ps := load(t, root, "go.mod/contract"); !reflect.DeepEqual(paths(ps), []string{"go.mod/contract"}) {
+		t.Errorf("Load(go.mod/contract): problems = %v, want one at go.mod/contract", ps)
+	}
+	for _, dir := range []string{"nowhere", "go.mod", "go.mod/contract"} {
+		if code, out := run(t, root, "contract", "--contract", dir); code != 1 || !strings.Contains(out, dir+": ") {
+			t.Errorf("flinch contract --contract %s exited %d, want 1 with a Contract error:\n%s", dir, code, out)
+		}
+	}
+	// Nor is a path through a symlink that points at itself.
+	looped := tree(t, map[string]string{"loop": "-> loop"})
+	if _, ps := load(t, looped, "loop/contract"); !reflect.DeepEqual(paths(ps), []string{"loop/contract"}) {
+		t.Errorf("Load(loop/contract): problems = %v, want one at loop/contract", ps)
 	}
 	// Without a contract directory, the default finds nothing either.
 	_, ps := load(t, fixture(t, "layout/spec"), "")
@@ -236,8 +245,46 @@ func TestDeclarationBlocksCountOnlyInMutantsMd(t *testing.T) {
 			t.Errorf("%s:%d: problem %q, want one that names contract/alpha/mutants.md", at.Path, at.Line, msg)
 		}
 	}
+	// notes.txt isn't Markdown and sub/more.md sits a level down, so neither is searched.
 	if len(ps) != 5 {
 		t.Errorf("problems = %v, want five misplaced blocks", ps)
+	}
+}
+
+// Contract: contract/C7
+func TestEachDeclarationCarriesItsBlocksReason(t *testing.T) {
+	c, ps := load(t, fixture(t, "reasons"), "")
+	if len(ps) > 0 {
+		t.Errorf("problems = %v, want none", ps)
+	}
+	got := map[int]string{}
+	for _, d := range c.Primitive("alpha").Declarations {
+		got[d.Line] = d.Reason
+	}
+	want := map[int]string{
+		4:  "Declared mutants",
+		13: "Sorting again changes nothing Some prose over two lines.",
+		14: "Sorting again changes nothing Some prose over two lines.",
+		// The prose before the last block explained that block, so it starts over here.
+		20: "Sorting again changes nothing Prose after a block.",
+		27: "Left open",
+		// A text block ends More prose. as well.
+		38: "Also open",
+	}
+	for line, reason := range want {
+		if got[line] != reason {
+			t.Errorf("the declaration at line %d has reason %q, want %q", line, got[line], reason)
+		}
+	}
+	// A line of dashes with no prose right above it underlines nothing, so Also open is still the
+	// nearest heading.
+	if !strings.HasPrefix(got[44], "Also open") {
+		t.Errorf("the declaration at line 44 has reason %q, want one under Also open", got[44])
+	}
+	// beta's file opens with a line of dashes, which underlines nothing either.
+	beta := c.Primitive("beta").Declarations
+	if len(beta) != 1 || beta[0].Reason != "" {
+		t.Errorf("beta's declarations = %+v, want one with no reason, since no heading is above it", beta)
 	}
 }
 
@@ -344,6 +391,16 @@ func TestAFileFlinchCantReadIsNeverPassedAsText(t *testing.T) {
 		if err == nil && !slices.Contains(paths(ps), locked) {
 			t.Errorf("Load passed %s, which it can't read: problems %v", locked, ps)
 		}
+	}
+	// The same goes for a Contract directory flinch isn't allowed to look into.
+	root := tree(t, map[string]string{"locked/contract/alpha/README.md": "# alpha\n\n- **A1** holds\n"})
+	p := filepath.Join(root, "locked")
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(p, 0o755) })
+	if _, ps, err := contract.Load(root, "locked/contract"); err == nil && !slices.Contains(paths(ps), "locked/contract") {
+		t.Errorf("Load passed locked/contract, which it can't look into: problems %v", ps)
 	}
 }
 

@@ -56,14 +56,6 @@ C5 makes a symlink, a file that isn't UTF-8 and a stray Go file errors. A named 
 internal/contract.loader.walk.func1: d.IsDir() || !d.Type().IsRegular() -> d.IsDir() && !d.Type().IsRegular()
 ```
 
-## Which files flinch searches for misplaced blocks
-
-C4 makes a `covers`, `equivalent` or `unpromised` block outside its own file an error. flinch looks for one in the Markdown files that sit directly in a primitive's directory. The Contract leaves open whether it also looks in other kinds of file, or reads through a symlink, which C5 already makes an error.
-
-```unpromised
-internal/contract.loader.primitive: !e.Type().IsRegular() || !strings.HasSuffix(name, ".md") -> !e.Type().IsRegular() && !strings.HasSuffix(name, ".md")
-```
-
 ## What is left of a line after a comment closes on it
 
 C3 says that fences follow CommonMark and that a fence inside an HTML comment is dead. The two rules disagree about a fence written on the same line after a comment closes, which CommonMark counts as part of the comment, so the Contract leaves the rest of such a line open.

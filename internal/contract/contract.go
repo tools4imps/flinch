@@ -89,7 +89,9 @@ func Load(root, dir string) (*Contract, []problem.Problem, error) {
 	if err == nil && info.Mode()&fs.ModeSymlink != 0 {
 		return c, []problem.Problem{{Path: dir, Message: "the Contract directory is a symlink, which lets its text change without a change to the Contract; make it a real directory"}}, nil
 	}
-	if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
+	// A path that is missing, names a file, or runs through a file or a symlink loop holds no
+	// Contract. Only a path flinch isn't allowed to look at leaves it unable to say.
+	if (err != nil && !errors.Is(err, fs.ErrPermission)) || (err == nil && !info.IsDir()) {
 		return c, []problem.Problem{{Path: dir, Message: "there's no Contract here; flinch looks for a directory with one subdirectory per primitive, each holding a README.md"}}, nil
 	}
 	if err != nil {
