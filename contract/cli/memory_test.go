@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"os"
 	"testing"
 )
 
@@ -52,5 +53,23 @@ func TestAMemoryLimitOfZeroStopsNothing(t *testing.T) {
 	m := parse(t, r).mutant(t, "calc.Add: a + b -> a - b")
 	if m.Status != "killed" || len(m.KilledBy) != 1 || m.KilledBy[0].Kind != "assertion" {
 		t.Fatalf("Add's mutant is %s, killed by %+v; want killed by an assertion\n%s", m.Status, m.KilledBy, r)
+	}
+}
+
+// Contract: cli/L14
+func TestARunInsideAnotherRunBuildsInTheOuterRunsCache(t *testing.T) {
+	mod(t)
+	outer, own := t.TempDir(), t.TempDir()
+	t.Setenv("FLINCH_GOCACHE", outer)
+	t.Setenv("GOCACHE", own)
+	r := flinch("run", "--only", "calc", "--operators", "arithmetic", "--format", "json", "--jobs", "1")
+	if r.code == 2 {
+		t.Fatalf("the run couldn't decide:\n%s", r)
+	}
+	if entries, _ := os.ReadDir(outer); len(entries) == 0 {
+		t.Error("nothing was built in the outer run's cache")
+	}
+	if entries, _ := os.ReadDir(own); len(entries) != 0 {
+		t.Errorf("the run built in its own GOCACHE too: %d entries", len(entries))
 	}
 }

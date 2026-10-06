@@ -58,6 +58,12 @@ type span struct {
 // A Contract with problems gives a Plan with no mutants: nothing else can be trusted until the
 // problems are fixed.
 func Prepare(ctx context.Context, o RunOptions) (*Plan, error) {
+	// A run started by another run's Contract tests builds everything in the outer run's cache. Each
+	// such run works on a fresh copy of some module, at a new path, and its builds would otherwise
+	// pile up in the user's cache under keys nothing ever uses again.
+	if outer := os.Getenv("FLINCH_GOCACHE"); outer != "" {
+		os.Setenv("GOCACHE", outer)
+	}
 	st, err := Check(o.Options)
 	if err != nil {
 		return nil, err

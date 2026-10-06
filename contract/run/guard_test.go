@@ -126,3 +126,36 @@ func TestFilesATestLeavesInItsDirectoryAreGoneAndLaterMutantsStillBuild(t *testi
 		}
 	}
 }
+
+// Contract: run/R14
+func TestTheRunsOwnCachePastItsLimitIsEmptiedBetweenChunks(t *testing.T) {
+	t.Setenv("FLINCH_GOCACHE", "")
+	root, b := proveSlow(t, runner.Options{CacheLimit: 1})
+	m, err := mutant(root, "calc/calc.go", "return 1", "return 2", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Run(context.Background(), []runner.Job{{Mutant: m, Tests: refs("a/TestSlow")}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(root), "work", "gocache")); err == nil {
+		t.Error("the run's cache outgrew a one-byte limit and is still there after the chunk")
+	}
+}
+
+// Contract: run/R14
+func TestASharedCacheIsNeverEmptiedByTheRunThatBorrowsIt(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("FLINCH_GOCACHE", cache)
+	root, b := proveSlow(t, runner.Options{CacheLimit: 1})
+	m, err := mutant(root, "calc/calc.go", "return 1", "return 2", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Run(context.Background(), []runner.Job{{Mutant: m, Tests: refs("a/TestSlow")}}); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := os.ReadDir(cache); err != nil || len(entries) == 0 {
+		t.Errorf("a run emptied the outer run's cache it was only borrowing: %v", err)
+	}
+}

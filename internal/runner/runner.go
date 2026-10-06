@@ -35,6 +35,9 @@ type Options struct {
 	// Some mutants make code allocate without end, and one such process can take the whole machine
 	// down with it. Zero turns the guard off.
 	MemoryLimit int64
+	// CacheLimit is how big, in bytes, the run's own mutant build cache may grow before flinch
+	// empties it between chunks of mutants. Zero means 2 GB.
+	CacheLimit int64
 }
 
 // A Suite is one primitive's Contract tests, which build into one test binary.
@@ -58,13 +61,14 @@ type Job struct {
 // A Baseline is what the clean runs recorded: the suites' clean binaries, each test's lone run time,
 // the coverage blocks each test reached, and the packages each suite's binary links.
 type Baseline struct {
-	o      Options
-	cache  string // the build cache for mutant builds
-	suites []*suite
-	byPrim map[string]*suite
-	lone   map[model.TestRef]time.Duration
-	blocks map[string][]block         // by module-relative file
-	links  map[string][]model.TestRef // by import path
+	o         Options
+	cache     string // the build cache for mutant builds
+	ownsCache bool   // whether this run made the cache, rather than sharing an outer run's
+	suites    []*suite
+	byPrim    map[string]*suite
+	lone      map[model.TestRef]time.Duration
+	blocks    map[string][]block         // by module-relative file
+	links     map[string][]model.TestRef // by import path
 
 	mu      sync.Mutex
 	batches map[string]*batchCheck
@@ -105,8 +109,8 @@ func Prove(ctx context.Context, o Options, suites []Suite, coverpkg []string) (*
 		blocks:  map[string][]block{},
 		links:   map[string][]model.TestRef{},
 		batches: map[string]*batchCheck{},
-		cache:   mutantCache(o.Work),
 	}
+	b.cache, b.ownsCache = mutantCache(o.Work)
 	for _, d := range []string{"clean", "cover", "m", "tmp"} {
 		if err := os.MkdirAll(filepath.Join(o.Work, d), 0o755); err != nil {
 			return nil, err

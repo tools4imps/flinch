@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,11 +84,41 @@ const mutantCacheVar = "FLINCH_GOCACHE"
 // gigabyte, so a run builds mutants in a cache of its own that goes when the run ends. A run started
 // by another run's tests shares the outer run's cache, so the standard library compiles once for the
 // whole tree of runs.
-func mutantCache(work string) string {
+func mutantCache(work string) (dir string, owned bool) {
 	if dir := os.Getenv(mutantCacheVar); dir != "" {
-		return dir
+		return dir, false
 	}
-	return filepath.Join(work, "gocache")
+	return filepath.Join(work, "gocache"), true
+}
+
+// defaultCacheLimit is how big the run's own build cache may grow before flinch empties it between
+// chunks of mutants. Every mutant adds its own compiled packages, so over a long run the cache would
+// otherwise grow until the disk is full.
+const defaultCacheLimit = 2 << 30
+
+// trimCache empties the run's own build cache when it has grown past the limit. Only the run that
+// made the cache trims it: a run started by another run's tests shares the outer cache and leaves it
+// alone, since the outer run may be building at the time.
+func (b *Baseline) trimCache() {
+	if !b.ownsCache {
+		return
+	}
+	limit := b.o.CacheLimit
+	if limit <= 0 {
+		limit = defaultCacheLimit
+	}
+	var size int64
+	filepath.WalkDir(b.cache, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, err := d.Info(); err == nil {
+				size += info.Size()
+			}
+		}
+		return nil
+	})
+	if size > limit {
+		os.RemoveAll(b.cache)
+	}
 }
 
 // buildMutant compiles a test binary through an overlay, in the mutant build cache. A build that

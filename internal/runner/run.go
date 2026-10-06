@@ -26,17 +26,24 @@ const maxRestarts = 3
 func (b *Baseline) Run(ctx context.Context, jobs []Job) (map[string]model.Row, error) {
 	rows := make([]model.Row, len(jobs))
 	t := &ticker{total: len(jobs)}
-	err := parallel(ctx, b.o.Jobs, len(jobs), func(ctx context.Context, i int) error {
-		row, err := b.job(ctx, jobs[i])
+	// Jobs go in chunks. Between chunks nothing builds or runs, which is when the run's own build
+	// cache can be emptied safely if it has grown too big.
+	step := max(b.o.Jobs*8, 32)
+	for start := 0; start < len(jobs); start += step {
+		chunk := jobs[start:min(start+step, len(jobs))]
+		err := parallel(ctx, b.o.Jobs, len(chunk), func(ctx context.Context, i int) error {
+			row, err := b.job(ctx, chunk[i])
+			if err != nil {
+				return err
+			}
+			rows[start+i] = row
+			b.tick(t)
+			return nil
+		})
 		if err != nil {
-			return err
+			return nil, err
 		}
-		rows[i] = row
-		b.tick(t)
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		b.trimCache()
 	}
 	out := make(map[string]model.Row, len(jobs))
 	for i, j := range jobs {

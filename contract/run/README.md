@@ -17,7 +17,7 @@ The runner proves the Contract suite green, maps what each Contract test reaches
 - **R11** The time budget is the sum of the batch's lone run times, times the coefficient (default 10), plus 2 seconds. A kill that came only from a timeout counts once a rerun with twice the budget times out as well.
 - **R12** A mutant that type-checked but won't build has no verdict, and any mutant without a verdict makes the run exit 2.
 - **R13** A test process that holds more than the memory limit is stopped, and counts as crashing: the lone test it ran is a killer, and a batch reruns one test per process.
-- **R14** Test processes run with TMPDIR, TMP and TEMP inside the run's work directory. Mutant builds use a build cache inside the run's work directory, or the outer run's when a Contract test starts flinch, so the user's Go build cache never holds a mutant.
+- **R14** Test processes run with TMPDIR, TMP and TEMP inside the run's work directory. Mutant builds use a build cache inside the run's work directory, or the outer run's when a Contract test starts flinch, so the user's Go build cache never holds a mutant. Between chunks of mutants, a run empties its own cache once it has grown past the cache limit (2 GB by default), and a run that borrowed an outer run's cache never empties it.
 - **R15** A stray `.go` file a test process leaves directly in its suite's directory is removed as soon as the process ends, and everything else new there goes once no process of the suite is running, so a mutant that makes a test write files can't break later builds. A mutant whose build fails gets one more try after that cleanup.
 
 ```covers

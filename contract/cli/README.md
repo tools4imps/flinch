@@ -17,6 +17,7 @@ The flinch command line, and the engine that carries a run from the Contract che
 - **L11** flinch exits 2 with no verdict and says why on stderr when it can't read the module or its Contract, can't type-check covered code, can't find the go command, can't make its work directory, or is interrupted. When a Contract test fails on clean code, flinch exits 2 with a report that names the test.
 - **L12** The report goes to stdout, or to the file `--output` names, as text unless `--format json` asks for JSON, and progress goes to stderr. A run's report records the go command's version, GOOS and GOARCH, every obligation, how many mutants were unviable, and the packages outside the Contract.
 - **L13** `--memory-limit MB` stops any test process that holds more than MB megabytes, 2048 by default, and the test it ran counts as crashing. `--memory-limit 0` turns the guard off.
+- **L14** A run started by another flinch run's Contract tests, which find the outer run's cache in `FLINCH_GOCACHE`, does all its builds in that cache.
 
 ```covers
 internal/cli
